@@ -36,9 +36,15 @@ NASA JPL Horizons для пролёта «Вояджер-2» у Юпитера. 
 │   ├── report.pdf         # собранный отчёт, 37 с.
 │   └── build.py           # сборка: python3 build.py
 ├── fonts/                 # Tinos (метрический аналог Times New Roman)
-└── docs/
-    └── VARKT_Voyager_predlozhenie.md   # предложение темы
+├── docs/
+│   ├── VARKT_Voyager_predlozhenie.md   # предложение темы
+│   └── SOLO_PLAN.md       # разбор проекта и план «что делаю лично я» (30.11 / 10.12)
+└── materials/
+    └── CONTEXT.md         # карта проекта для передачи в новый чат
 ```
+
+Собранный `report/report.pdf` в Git не хранится (`*.pdf` в `.gitignore`): на чистой копии
+он пересобирается командой `cd report && python3 build.py` (≈1–2 с, 37 с.).
 
 ## Быстрый старт
 
