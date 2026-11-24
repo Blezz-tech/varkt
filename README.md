@@ -33,7 +33,7 @@
 ├── report/                # отчёт по ГОСТ 7.32-2017 (21 с., Typst)
 │   ├── report.typ
 │   └── build.py
-└── fonts/                 # шрифты Tinos (метрический аналог Times New Roman)
+└── fonts/                 # Times New Roman (текст) + STIX Two Math (формулы)
 ```
 
 ---

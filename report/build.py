@@ -2,7 +2,7 @@
 
 Запуск:  python3 build.py
 Требуется: pip install typst
-Шрифты берутся из ../fonts (Tinos — метрический аналог Times New Roman).
+Шрифты берутся из ../fonts (Times New Roman для текста, STIX Two Math для формул).
 """
 import os
 import sys
