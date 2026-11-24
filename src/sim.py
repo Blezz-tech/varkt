@@ -1,16 +1,16 @@
 """
 Физико-математическая модель гравитационного манёвра у газового гиганта
-(пролёт Юла в системе Кербола и верификация по пролёту «Вояджера-2» у Юпитера).
+(пролёт Юла в системе Кербола и проверка формул на справочных данных «Вояджера-2»).
 
 Модель: плоская (2D), метод точечных сфер действия (patched conics).
 Участки:
   1) гомановский перелёт Кербин -> Юл в поле Кербола;
-  2) гиперболический пролёт в сфере действия Юла (аналитика + численный метод RK4);
+  2) гиперболический пролёт в сфере действия Юла (аналитика + простой цикл RK4);
   3) послепролётная гелиоцентрическая орбита («треугольник скоростей»);
   4) условие ухода из системы и импульс в перицентре (эффект Оберта);
-  5) верификация по реальным эфемеридам NASA JPL Horizons («Вояджер-2», Юпитер).
+  5) проверка формул на табличных параметрах пролёта «Вояджера-2» у Юпитера (NASA).
 
-Единицы: СИ (для реального Юпитера в блоке JPL — км и км/с).
+Единицы: СИ (для справочного блока Юпитера — км и км/с).
 Запуск:  python3 src/sim.py
 """
 
@@ -36,7 +36,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(ROOT, "out")
 os.makedirs(OUT, exist_ok=True)
 
-# --- 1. Физические константы системы Кербола (KSP 1.12, СИ) --------------------------
+# --- 1. Физические константы системы Кербола (СИ) ------------------------------------
 MU_SUN = 1.1723328e18
 MU_KERBIN, R_KERBIN, A_KERBIN = 3.5316e12, 600_000.0, 13_599_840_256.0
 MU_JOOL, R_JOOL, A_JOOL = 2.82528e14, 6_000_000.0, 68_773_560_320.0
@@ -44,9 +44,20 @@ SOI_JOOL, ATM_JOOL = 2_455_985_200.0, 200_000.0
 A_EELOO, E_EELOO = 90_118_820_000.0, 0.26
 DAY, KSP_DAY = 86_400.0, 21_600.0
 
+# Табличные данные NASA по пролёту «Вояджера-2» у Юпитера (9 июля 1979 г.)
+VOYAGER2 = dict(
+    mu_jup=1.266865e8,   # гравитационный параметр Юпитера, км³/с²
+    R_jup=71_492.0,      # экваториальный радиус Юпитера, км
+    r_p=721_895.0,       # радиус перицентра пролёта (10.10 R_Ю), км
+    v_inf=7.60,          # гиперболическая избыточная скорость, км/с
+    v_jup=13.06,         # орбитальная скорость Юпитера, км/с
+    v_in_helio=9.86,     # гелиоцентрическая скорость до пролёта, км/с
+    v_out_nasa=20.03,    # фактическая гелиоцентрическая скорость после пролёта, км/с
+)
+
 
 def period(a: float, mu: float) -> float:
-    return 2 * math.pi * math.sqrt(a ** 3 / mu)
+    return 2.0 * math.pi * math.sqrt(a ** 3 / mu)
 
 
 def v_circ(r: float, mu: float) -> float:
@@ -54,7 +65,7 @@ def v_circ(r: float, mu: float) -> float:
 
 
 def v_esc(r: float, mu: float) -> float:
-    return math.sqrt(2 * mu / r)
+    return math.sqrt(2.0 * mu / r)
 
 
 # --- 2. Гомановский перелёт Кербин -> Юл ---------------------------------------------
@@ -74,18 +85,17 @@ class Transfer:
 
 def launch_window(r1: float = R_KERBIN + 100_000.0) -> Transfer:
     """Расчёт полуэллипса Гомана от орбиты Кербина до орбиты Юла."""
-    mu = MU_SUN
     a_t = 0.5 * (A_KERBIN + A_JOOL)
-    tof = math.pi * math.sqrt(a_t ** 3 / mu)
-    v_c1 = v_circ(A_KERBIN, mu)
-    v_inf_k = math.sqrt(mu * (2 / A_KERBIN - 1 / a_t)) - v_c1
-    v_arr = math.sqrt(mu * (2 / A_JOOL - 1 / a_t))
-    v_j = v_circ(A_JOOL, mu)
+    tof = math.pi * math.sqrt(a_t ** 3 / MU_SUN)
+    v_c1 = v_circ(A_KERBIN, MU_SUN)
+    v_inf_k = math.sqrt(MU_SUN * (2.0 / A_KERBIN - 1.0 / a_t)) - v_c1
+    v_arr = math.sqrt(MU_SUN * (2.0 / A_JOOL - 1.0 / a_t))
+    v_j = v_circ(A_JOOL, MU_SUN)
     v_inf_j = abs(v_j - v_arr)
-    v_per = math.sqrt(v_inf_k ** 2 + 2 * MU_KERBIN / r1)
+    v_per = math.sqrt(v_inf_k ** 2 + 2.0 * MU_KERBIN / r1)
     dv = v_per - v_circ(r1, MU_KERBIN)
-    n_j = 2 * math.pi / period(A_JOOL, mu)
-    phase = (math.pi - n_j * tof + math.pi) % (2 * math.pi) - math.pi
+    n_j = 2.0 * math.pi / period(A_JOOL, MU_SUN)
+    phase = (math.pi - n_j * tof + math.pi) % (2.0 * math.pi) - math.pi
     return Transfer(r1, a_t, tof, dv, v_inf_k, v_arr, v_j, v_inf_j, math.degrees(phase))
 
 
@@ -97,80 +107,55 @@ def e_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
 
 
 def delta_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
-    """Асимптотический угол поворота вектора скорости: delta = 2 * arcsin(1/e)."""
-    return 2 * math.asin(1.0 / e_hyp(rp, vinf, mu))
+    """Угол поворота вектора скорости: delta = 2 * arcsin(1/e)."""
+    return 2.0 * math.asin(1.0 / e_hyp(rp, vinf, mu))
 
 
 def b_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
     """Прицельный параметр: b = r_p * sqrt((e + 1) / (e - 1))."""
     e = e_hyp(rp, vinf, mu)
-    return rp * math.sqrt((e + 1) / (e - 1))
+    return rp * math.sqrt((e + 1.0) / (e - 1.0))
 
 
-def delta_at_radius(rp: float, vinf: float, rr: float, mu: float = MU_JOOL) -> float:
-    """Угол (в градусах) между векторами скорости на входе и выходе на конечном радиусе rr."""
-    e = e_hyp(rp, vinf, mu)
-    p = rp * (1 + e)
-    cosnu = (p / rr - 1) / e
-    nu = math.acos(max(-1.0, min(1.0, cosnu)))
-    s, c = math.sin(nu), math.cos(nu)
-    num = (e + c) ** 2 - s ** 2
-    den = (e + c) ** 2 + s ** 2
-    return math.degrees(math.acos(max(-1.0, min(1.0, num / den))))
+def rk4_step(r: np.ndarray, v: np.ndarray, dt: float, mu: float = MU_JOOL):
+    """Один классический шаг метода Рунге—Кутты 4-го порядка для r'' = -mu * r / |r|^3."""
+    def acc(pos):
+        return -mu * pos / (np.linalg.norm(pos) ** 3)
+
+    k1_r, k1_v = v, acc(r)
+    k2_r, k2_v = v + 0.5 * dt * k1_v, acc(r + 0.5 * dt * k1_r)
+    k3_r, k3_v = v + 0.5 * dt * k2_v, acc(r + 0.5 * dt * k2_r)
+    k4_r, k4_v = v + dt * k3_v, acc(r + dt * k3_r)
+    r_next = r + (dt / 6.0) * (k1_r + 2.0 * k2_r + 2.0 * k3_r + k4_r)
+    v_next = v + (dt / 6.0) * (k1_v + 2.0 * k2_v + 2.0 * k3_v + k4_v)
+    return r_next, v_next
 
 
-def state_on_hyperbola(rp: float, vinf: float, rr: float, branch: int,
-                       mu: float = MU_JOOL) -> tuple[np.ndarray, np.ndarray]:
-    """Точное положение и скорость на гиперболе в точке радиуса rr (branch=-1 вход, +1 выход)."""
-    e = e_hyp(rp, vinf, mu)
-    p = rp * (1 + e)
-    cosnu = (p / rr - 1) / e
-    nu = branch * math.acos(max(-1.0, min(1.0, cosnu)))
-    er = np.array([math.cos(nu), math.sin(nu)])
-    et = np.array([-math.sin(nu), math.cos(nu)])
-    gamma = math.atan2(e * math.sin(nu), 1 + e * math.cos(nu))
-    speed = math.sqrt(vinf ** 2 + 2 * mu / rr)
-    return rr * er, speed * (math.sin(gamma) * er + math.cos(gamma) * et)
-
-
-def propagate_hyperbola(rp: float, vinf: float, mu: float = MU_JOOL,
-                        frac_soi: float = 0.95, dt_max: float = 120.0,
-                        soi: float = SOI_JOOL):
+def propagate_rk4_from_pericenter(rp: float, vinf: float, dt: float = 20.0,
+                                  r_limit: float = 4.5e8, mu: float = MU_JOOL):
     """
-    Численное интегрирование задачи двух тел методом Рунге—Кутты 4-го порядка (RK4)
-    с адаптивным шагом внутри сферы действия Юла (старт и финиш на r = frac_soi * SOI).
-    Возвращает траекторию, численный перицентр r_min и численный угол поворота вектора скорости.
+    Простейшая численная проверка гиперболы с постоянным шагом dt:
+    стартуем в перицентре r0 = (rp, 0), v0 = (0, v_p) и интегрируем вперёд и назад по времени.
     """
-    r_check = frac_soi * soi
-    r, v = state_on_hyperbola(rp, vinf, r_check, branch=-1, mu=mu)
-    v_start = v.copy()
+    vp = math.sqrt(vinf ** 2 + 2.0 * mu / rp)
+    r0, v0 = np.array([rp, 0.0]), np.array([0.0, vp])
 
-    def acc(q):
-        return -mu * q / np.dot(q, q) ** 1.5
+    # Вперёд от перицентра (+dt) и назад от перицентра (-dt)
+    fwd, r, v = [r0], r0.copy(), v0.copy()
+    while np.linalg.norm(r) < r_limit:
+        r, v = rk4_step(r, v, +dt, mu)
+        fwd.append(r)
+    v_out = v
 
-    traj = [r.copy()]
-    r_min, n = float(np.linalg.norm(r)), 0
-    while n < 2_000_000:
-        rn, vn = float(np.linalg.norm(r)), float(np.linalg.norm(v))
-        dt = min(dt_max, max(0.5, 0.01 * rn / vn))
-        a1 = acc(r);               k1 = v
-        a2 = acc(r + 0.5 * dt * k1); k2 = v + 0.5 * dt * a1
-        a3 = acc(r + 0.5 * dt * k2); k3 = v + 0.5 * dt * a2
-        a4 = acc(r + dt * k3);       k4 = v + dt * a3
-        r = r + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
-        v = v + dt / 6 * (a1 + 2 * a2 + 2 * a3 + a4)
-        rn_new = float(np.linalg.norm(r))
-        r_min = min(r_min, rn_new)
-        n += 1
-        if np.linalg.norm(r - traj[-1]) > 0.004 * rn_new:
-            traj.append(r.copy())
-        if rn_new >= r_check and np.dot(r, v) > 0:
-            break
-    traj.append(r.copy())
+    bwd, r, v = [], r0.copy(), v0.copy()
+    while np.linalg.norm(r) < r_limit:
+        r, v = rk4_step(r, v, -dt, mu)
+        bwd.append(r)
+    v_in = v
 
-    cos_d = np.clip(np.dot(v_start, v) / (np.linalg.norm(v_start) * np.linalg.norm(v)), -1.0, 1.0)
-    delta_rk4 = math.acos(float(cos_d))
-    return np.array(traj), r_min, delta_rk4, r_check
+    traj = np.array(bwd[::-1] + fwd)
+    cos_d = np.clip(np.dot(v_in, v_out) / (np.linalg.norm(v_in) * np.linalg.norm(v_out)), -1.0, 1.0)
+    return traj, math.degrees(math.acos(float(cos_d)))
 
 
 # --- 4. Послепролётная гелиоцентрическая орбита и эффект Оберта ----------------------
@@ -182,32 +167,28 @@ def turn_vinf(vinf_in: np.ndarray, delta: float, side: int) -> np.ndarray:
 
 
 def post_flyby(rp: float, vinf: float, side: int, v_j: float):
-    """
-    Треугольник скоростей: до пролёта аппарат медленнее Юла, поэтому
-    v_inf_in = (0, -vinf) направлена против скорости планеты v_J = (0, v_j).
-    После поворота на угол delta получаем v_out = v_J + v_inf_out.
-    """
+    """Треугольник скоростей: v_out = v_J + v_inf_out."""
     vinf_in = np.array([0.0, -vinf])
     vinf_out = turn_vinf(vinf_in, delta_hyp(rp, vinf), side)
     return vinf_out, np.array([0.0, v_j]) + vinf_out
 
 
 def helio_elements(r_vec: np.ndarray, v_vec: np.ndarray, mu: float = MU_SUN) -> dict:
-    """Кеплеровы элементы послепролётной гелиоцентрической орбиты по векторам r и v."""
+    """Большая полуось, эксцентриситет и афелий гелиоцентрической орбиты по r и v."""
     r, v = float(np.linalg.norm(r_vec)), float(np.linalg.norm(v_vec))
-    eps = v * v / 2 - mu / r
+    eps = 0.5 * v * v - mu / r
     h = float(r_vec[0] * v_vec[1] - r_vec[1] * v_vec[0])
-    a = -mu / (2 * eps) if eps < 0 else math.inf
+    a = -mu / (2.0 * eps) if eps < 0 else math.inf
     e_vec = ((v * v - mu / r) * r_vec - float(np.dot(r_vec, v_vec)) * v_vec) / mu
     e = float(np.linalg.norm(e_vec))
-    r_per = h * h / mu / (1 + e)
+    r_per = h * h / mu / (1.0 + e)
     return dict(eps=eps, a=a, e=e, r_per=r_per,
-                r_apo=a * (1 + e) if math.isfinite(a) else math.inf)
+                r_apo=a * (1.0 + e) if math.isfinite(a) else math.inf)
 
 
 def rp_for_apo(apo_target: float, vinf: float, side: int, v_j: float,
                r_helio: float = A_JOOL) -> float | None:
-    """Подбор радиуса перицентра пролёта под заданный афелий методом бисекции."""
+    """Подбор радиуса перицентра пролёта под заданный афелий методом деления отрезка пополам."""
     def f(rp):
         _, v_out = post_flyby(rp, vinf, side, v_j)
         return helio_elements(np.array([r_helio, 0.0]), v_out)["r_apo"] - apo_target
@@ -215,7 +196,7 @@ def rp_for_apo(apo_target: float, vinf: float, side: int, v_j: float,
     lo, hi = R_JOOL + ATM_JOOL + 10_000, 200 * R_JOOL
     if f(lo) * f(hi) > 0:
         return None
-    for _ in range(100):
+    for _ in range(80):
         mid = 0.5 * (lo + hi)
         if f(lo) * f(mid) <= 0:
             hi = mid
@@ -228,53 +209,43 @@ def oberth_dv(rp: float, vinf: float, delta: float, v_j: float,
               mu: float = MU_JOOL) -> tuple[float, float]:
     """Импульс Delta_v в перицентре гиперболы для достижения второй космической скорости."""
     v_esc_helio = v_esc(A_JOOL, MU_SUN)
-    # Квадратное уравнение из теоремы косинусов: v_inf'^2 - 2 v_j cos(delta) v_inf' + v_j^2 - v_esc^2 = 0
-    bb = -2 * v_j * math.cos(delta)
+    bb = -2.0 * v_j * math.cos(delta)
     cc = v_j ** 2 - v_esc_helio ** 2
-    vinf2 = (-bb + math.sqrt(bb * bb - 4 * cc)) / 2
-    dv = math.sqrt(vinf2 ** 2 + 2 * mu / rp) - math.sqrt(vinf ** 2 + 2 * mu / rp)
+    vinf2 = (-bb + math.sqrt(bb * bb - 4.0 * cc)) / 2.0
+    dv = math.sqrt(vinf2 ** 2 + 2.0 * mu / rp) - math.sqrt(vinf ** 2 + 2.0 * mu / rp)
     return vinf2, dv
 
 
-# --- 5. Верификация по реальным данным («Вояджер-2» у Юпитера, JPL Horizons) ---------
+# --- 5. Проверка формул по справочным параметрам «Вояджера-2» ------------------------
 
-def load_voyager_reference() -> dict:
-    """Читает параметры пролёта «Вояджера-2» из снимка JPL Horizons (или встроенные константы)."""
-    snap = os.path.join(OUT, "jpl_snapshot.json")
-    base = dict(mu=1.26686534e8, R=71_492.0,
-                r_p=721_894.9, v_inf=7.6055,
-                v_before=9.863, v_after=20.029,
-                delta_obs=91.16, r_obs_R=60.15)
-    if os.path.exists(snap):
-        with open(snap, encoding="utf-8") as f:
-            d = json.load(f)
-        fb, hel = d["flyby"], d.get("heliocentric", {})
-        base.update(
-            r_p=fb["r_p_km"],
-            v_inf=fb["v_inf_km_s"],
-            delta_obs=fb["delta_observed"],
-            r_obs_R=fb["r_obs_before_R"],
-            v_before=hel.get("v_before_km_s", base["v_before"]),
-            v_after=hel.get("v_after_km_s", base["v_after"]),
-        )
-    return base
+def check_voyager2() -> dict:
+    """
+    Подстановка справочных табличных чисел пролёта «Вояджера-2» у Юпитера (NASA, 09.07.1979)
+    в выведенные формулы гиперболы и треугольника скоростей.
+    """
+    mu, rp, vinf = VOYAGER2["mu_jup"], VOYAGER2["r_p"], VOYAGER2["v_inf"]
+    vj, vin = VOYAGER2["v_jup"], VOYAGER2["v_in_helio"]
 
-
-def check_real_world() -> dict:
-    """Проверка аналитической модели пролёта на эфемеридах «Вояджера-2» (09.07.1979)."""
-    jup = load_voyager_reference()
-    mu, rp, vinf = jup["mu"], jup["r_p"], jup["v_inf"]
     e = e_hyp(rp, vinf, mu)
-    delta_as = math.degrees(delta_hyp(rp, vinf, mu))
-    delta_mod = delta_at_radius(rp, vinf, jup["r_obs_R"] * jup["R"], mu)
+    delta = delta_hyp(rp, vinf, mu)
+    # Угол входа между векторами v_Юпитера и v_inf до пролёта по теореме косинусов:
+    cos_phi_in = (vin ** 2 - vj ** 2 - vinf ** 2) / (2.0 * vj * vinf)
+    phi_in = math.acos(cos_phi_in)
+    # После поворота вектора v_inf к направлению движения Юпитера на угол delta:
+    phi_out = phi_in - delta
+    v_out_model = math.sqrt(vj ** 2 + vinf ** 2 + 2.0 * vj * vinf * math.cos(phi_out))
+
     return dict(
-        r_p_km=rp, rp_over_R=rp / jup["R"], v_inf_km_s=vinf,
-        e=e, delta_asymptotic=delta_as,
-        delta_model_at_r=delta_mod, delta_observed=jup["delta_obs"],
-        err_deg=abs(delta_mod - jup["delta_obs"]),
-        v_before=jup["v_before"], v_after=jup["v_after"],
-        dv_actual=jup["v_after"] - jup["v_before"],
-        b_km=b_hyp(rp, vinf, mu), R_km=jup["R"], mu=mu,
+        r_p_km=rp,
+        rp_over_R=rp / VOYAGER2["R_jup"],
+        v_inf_km_s=vinf,
+        e=e,
+        delta_deg=math.degrees(delta),
+        v_in_km_s=vin,
+        v_out_model_km_s=v_out_model,
+        v_out_nasa_km_s=VOYAGER2["v_out_nasa"],
+        dv_nasa_km_s=VOYAGER2["v_out_nasa"] - vin,
+        rel_err_percent=abs(v_out_model - VOYAGER2["v_out_nasa"]) / VOYAGER2["v_out_nasa"] * 100.0,
     )
 
 
@@ -287,29 +258,21 @@ def _circle(r: float, n: int = 600):
 
 def _ellipse(a: float, e: float, omega: float = 0.0, n: int = 1200):
     th = np.linspace(0, 2 * np.pi, n)
-    b = a * math.sqrt(max(1 - e * e, 1e-12))
+    b = a * math.sqrt(max(1.0 - e * e, 1e-12))
     x, y = a * np.cos(th) - a * e, b * np.sin(th)
     c, s = math.cos(omega), math.sin(omega)
     return c * x - s * y, s * x + c * y
 
 
-def _conic_branch(r0: np.ndarray, v0: np.ndarray, mu: float = MU_JOOL,
-                  n: int = 4000, r_max: float = 3e9):
-    """Аналитическая коника (эллипс или гипербола) по вектору состояния (r0, v0)."""
+def _conic_branch(r0: np.ndarray, v0: np.ndarray, mu: float = MU_SUN, n: int = 2500):
     rn = float(np.linalg.norm(r0))
     h = float(r0[0] * v0[1] - r0[1] * v0[0])
     e_vec = ((float(v0 @ v0) - mu / rn) * r0 - float(r0 @ v0) * v0) / mu
     e = float(np.linalg.norm(e_vec))
     p = h * h / mu
     phi_e = math.atan2(float(e_vec[1]), float(e_vec[0]))
-    if e >= 1.0:
-        nu_max = math.acos(-1 / e) * 0.999
-        nu = np.linspace(-nu_max, nu_max, n)
-        r = p / (1 + e * np.cos(nu))
-        ok = r < r_max
-        return r[ok] * np.cos(phi_e + nu[ok]), r[ok] * np.sin(phi_e + nu[ok])
     nu = np.linspace(0, 2 * math.pi, n)
-    r = p / (1 + e * np.cos(nu))
+    r = p / (1.0 + e * np.cos(nu))
     return r * np.cos(phi_e + nu), r * np.sin(phi_e + nu)
 
 
@@ -323,22 +286,17 @@ def fig_trajectory(tr: Transfer, rp_eeloo: float, rp_low: float):
     x, y = _ellipse(A_EELOO, E_EELOO, math.radians(260))
     ax.plot(x / 1e9, y / 1e9, color="#9aa0a6", lw=1.1, ls="--", label="орбита Эилу")
 
-    # Встреча с Юлом происходит в точке (-A_JOOL, 0), где скорость Юла v_J = (0, -v_jool)
-    # Старт от Кербина в точке (+A_KERBIN, 0) в направлении +y -> полуэллипс сверху до (-A_JOOL, 0)
     th_tr = np.linspace(0, math.pi, 800)
     e_tr = (A_JOOL - A_KERBIN) / (A_JOOL + A_KERBIN)
-    r_tr = tr.a_t * (1 - e_tr ** 2) / (1 + e_tr * np.cos(th_tr))
+    r_tr = tr.a_t * (1.0 - e_tr ** 2) / (1.0 + e_tr * np.cos(th_tr))
     ax.plot(r_tr * np.cos(th_tr) / 1e9, r_tr * np.sin(th_tr) / 1e9,
             color="#ea4335", lw=2.3, label="гомановский перелёт Кербин → Юл")
 
     r_meet = np.array([-A_JOOL, 0.0])
     for rp, color, lab in ((rp_low, "#e37400", "после пролёта h_p = 200 км (афелий 711 млн км)"),
                            (rp_eeloo, "#9334e6", "после пролёта h_p = 35 096 км (к афелию Эилу)")):
-        # В точке (-A_JOOL, 0) Юл движется в сторону -y; поворачиваем результат post_flyby на 180°
         _, v_out_std = post_flyby(rp, tr.v_inf_j, +1, tr.v_jool)
-        v_out = -v_out_std
-        # Рисуем ветвь от момента пролёта Юла до афелия и обратно
-        xh, yh = _conic_branch(r_meet, v_out, mu=MU_SUN, n=2500)
+        xh, yh = _conic_branch(r_meet, -v_out_std, mu=MU_SUN)
         ax.plot(xh / 1e9, yh / 1e9, color=color, lw=1.9, label=lab)
 
     ax.plot(0, 0, "o", ms=14, color="#fbbc04", label="Кербол")
@@ -357,16 +315,14 @@ def fig_trajectory(tr: Transfer, rp_eeloo: float, rp_low: float):
 def fig_design_map(tr: Transfer, hs=np.linspace(200, 3e5, 900)):
     fig, axes = plt.subplots(1, 2, figsize=(12.2, 4.8))
     ax = axes[0]
-    apo = []
-    for h in hs:
-        rp = R_JOOL + h * 1000
-        _, v_out = post_flyby(rp, tr.v_inf_j, +1, tr.v_jool)
-        apo.append(helio_elements(np.array([A_JOOL, 0.0]), v_out)["r_apo"])
-    apo = np.array(apo)
+    apo = np.array([
+        helio_elements(np.array([A_JOOL, 0.0]), post_flyby(R_JOOL + h * 1000, tr.v_inf_j, +1, tr.v_jool)[1])["r_apo"]
+        for h in hs
+    ])
     ax.plot(hs, apo / 1e9, color="#1a73e8", lw=2)
     ax.fill_between(hs, 0, apo / 1e9, color="#1a73e8", alpha=0.10)
     ax.axhline(A_EELOO / 1e9, color="#9334e6", ls="--", lw=1.5, label="большая полуось Эилу")
-    ax.axhline(A_EELOO * (1 + E_EELOO) / 1e9, color="#34a853", ls="--", lw=1.5, label="афелий Эилу (113.5 млн км)")
+    ax.axhline(A_EELOO * (1.0 + E_EELOO) / 1e9, color="#34a853", ls="--", lw=1.5, label="афелий Эилу (113.5 млн км)")
     ax.set_yscale("log"); ax.set_xscale("log")
     ax.set_xlim(150, 3.2e5)
     ax.set_xticks([200, 1000, 5000, 20000, 100000, 300000])
@@ -377,12 +333,10 @@ def fig_design_map(tr: Transfer, hs=np.linspace(200, 3e5, 900)):
     ax.legend(fontsize=8, loc="upper right")
 
     ax = axes[1]
-    need_esc = []
-    for h in hs:
-        rp = R_JOOL + h * 1000
-        _, dv = oberth_dv(rp, tr.v_inf_j, delta_hyp(rp, tr.v_inf_j), tr.v_jool)
-        need_esc.append(dv)
-    need_esc = np.array(need_esc)
+    need_esc = np.array([
+        oberth_dv(R_JOOL + h * 1000, tr.v_inf_j, delta_hyp(R_JOOL + h * 1000, tr.v_inf_j), tr.v_jool)[1]
+        for h in hs
+    ])
     ax.plot(hs, need_esc, color="#e37400", lw=2)
     ax.fill_between(hs, 0, need_esc, color="#e37400", alpha=0.12)
     ax.axvspan(0, ATM_JOOL / 1000, color="#fbbc04", alpha=0.35)
@@ -402,44 +356,46 @@ def fig_design_map(tr: Transfer, hs=np.linspace(200, 3e5, 900)):
 
 def fig_verify(tr: Transfer):
     rp = R_JOOL + 20_000_000.0
-    traj, r_min, d_rk4, r_chk = propagate_hyperbola(rp, tr.v_inf_j)
-    d_fin_an = delta_at_radius(rp, tr.v_inf_j, r_chk)
+    r_lim = 4.5e8
+    traj_rk4, d_rk4 = propagate_rk4_from_pericenter(rp, tr.v_inf_j, dt=20.0, r_limit=r_lim)
     d_asym = math.degrees(delta_hyp(rp, tr.v_inf_j))
+
+    # Аналитическая кривая гиперболы r(nu) = p / (1 + e * cos(nu))
+    e = e_hyp(rp, tr.v_inf_j)
+    p = rp * (1.0 + e)
+    nu_max = math.acos((p / r_lim - 1.0) / e)
+    nu = np.linspace(-nu_max, nu_max, 1000)
+    rr = p / (1.0 + e * np.cos(nu))
 
     fig, axes = plt.subplots(1, 2, figsize=(11.5, 4.6))
     ax = axes[0]
-    ax.plot(traj[:, 0] / 1e3, traj[:, 1] / 1e3, lw=1.8, color="#1a73e8", label="численно (RK4)")
-    r0, v0 = state_on_hyperbola(rp, tr.v_inf_j, r_chk, branch=-1)
-    xh, yh = _conic_branch(r0, v0, r_max=r_chk)
-    ax.plot(xh / 1e3, yh / 1e3, "--", lw=1.3, color="#ea4335", label="аналитика (гипербола)")
-    ax.plot(0, 0, "o", ms=14, color="#34a853", label="Юл")
+    ax.plot(traj_rk4[:, 0] / 1e3, traj_rk4[:, 1] / 1e3, lw=2.0, color="#1a73e8",
+            label="численно (метод RK4, шаг 20 с)")
+    ax.plot(rr * np.cos(nu) / 1e3, rr * np.sin(nu) / 1e3, "--", lw=1.4, color="#ea4335",
+            label="формула коники r(ν) = p / (1 + e cos ν)")
+    ax.plot(0, 0, "o", ms=13, color="#34a853", label="Юл")
     ax.set_aspect("equal", adjustable="box")
-    bb = b_hyp(rp, tr.v_inf_j) / 1e3
-    ax.set_xlim(-6 * bb, 4 * bb); ax.set_ylim(-6 * bb, 6 * bb)
     ax.ticklabel_format(style="sci", scilimits=(-3, 3), axis="both")
     ax.set_xlabel("x, км"); ax.set_ylabel("y, км")
-    ax.set_title("Гипербола пролёта Юла (h_p = 20 000 км):\nчисленное интегрирование RK4 и аналитическая коника")
-    ax.legend(fontsize=8, loc="lower right")
+    ax.set_title("Гипербола пролёта Юла (h_p = 20 000 км):\nсовпадение численного расчёта RK4 и формулы коники")
+    ax.legend(fontsize=8, loc="lower left")
 
     ax = axes[1]
-    rr = np.linspace(R_JOOL + ATM_JOOL, 40 * R_JOOL, 400)
-    ax.plot((rr - R_JOOL) / 1000, [math.degrees(delta_hyp(r, tr.v_inf_j)) for r in rr],
-            color="#1a73e8", lw=1.8, label="асимптотическая формула δ = 2·arcsin(1/e)")
-    ax.plot((rp - R_JOOL) / 1000, math.degrees(d_rk4), "o", color="#ea4335", ms=8,
-            label=f"RK4 в пределах 0.95 SOI: {math.degrees(d_rk4):.2f}°")
-    ax.plot((rp - R_JOOL) / 1000, d_asym, "x", color="#34a853", ms=10, mew=2,
-            label=f"асимптотика на бесконечности: {d_asym:.2f}°")
+    hs = np.linspace(ATM_JOOL, 40 * R_JOOL, 400)
+    ax.plot(hs / 1000, [math.degrees(delta_hyp(R_JOOL + h, tr.v_inf_j)) for h in hs],
+            color="#1a73e8", lw=1.9, label="формула δ = 2·arcsin(1/e)")
+    for h_test in (200e3, 5_000e3, 20_000e3, 100_000e3):
+        _, d_num = propagate_rk4_from_pericenter(R_JOOL + h_test, tr.v_inf_j, dt=60.0, r_limit=0.95 * SOI_JOOL)
+        ax.plot(h_test / 1000, d_num, "o", color="#ea4335", ms=7,
+                label="точки численного расчёта RK4" if h_test == 200e3 else None)
     ax.set_xscale("log")
     ax.set_xlabel("высота перицентра h_p, км"); ax.set_ylabel("угол поворота δ, °")
-    err_asym = abs(math.degrees(d_rk4) - d_asym)
-    err_fin = abs(math.degrees(d_rk4) - d_fin_an)
-    ax.set_title(f"Верификация численной схемы:\n"
-                 f"RK4 = {math.degrees(d_rk4):.2f}°, асимптотика = {d_asym:.2f}° (Δ = {err_asym:.2f}°)")
+    ax.set_title("Угол поворота вектора скорости δ(h_p):\nаналитическая кривая и контрольные точки RK4")
     ax.legend(fontsize=8, loc="lower left")
     fig.tight_layout()
     fig.savefig(os.path.join(OUT, "fig3_verification.png"))
     plt.close(fig)
-    return r_min, math.degrees(d_rk4), d_fin_an, d_asym, err_asym, err_fin
+    return d_rk4, d_asym
 
 
 def fig_oberth(tr: Transfer):
@@ -447,7 +403,7 @@ def fig_oberth(tr: Transfer):
     ax = axes[0]
     dlt = np.linspace(0, 180, 600)
     v_out = np.sqrt(tr.v_jool ** 2 + tr.v_inf_j ** 2
-                    - 2 * tr.v_jool * tr.v_inf_j * np.cos(np.radians(dlt)))
+                    - 2.0 * tr.v_jool * tr.v_inf_j * np.cos(np.radians(dlt)))
     ax.plot(dlt, v_out, color="#1a73e8", lw=2, label="|v_вых| после пролёта")
     ax.axhline(v_esc(A_JOOL, MU_SUN), color="#9334e6", ls="--", lw=1.6,
                label="вторая космическая Кербола (5839 м/с)")
@@ -477,40 +433,36 @@ def fig_oberth(tr: Transfer):
     plt.close(fig)
 
 
-def fig_scaling(tr: Transfer, real: dict):
+def fig_scaling(tr: Transfer, voy: dict):
     fig, axes = plt.subplots(1, 2, figsize=(11.8, 4.6))
     ax = axes[0]
     rr = np.linspace(1.05, 12, 500)
     ax.plot(rr, [math.degrees(delta_hyp(r * R_JOOL, tr.v_inf_j)) for r in rr],
             lw=2, color="#1a73e8", label="Юл (система Кербола), v∞ = 1756 м/с")
-    ax.plot(rr, [math.degrees(delta_hyp(r * real["R_km"], real["v_inf_km_s"], real["mu"])) for r in rr],
-            lw=2, color="#ea4335", label=f"Юпитер («Вояджер-2»), v∞ = {real['v_inf_km_s']:.2f} км/с")
-    ax.plot(real["rp_over_R"], real["delta_asymptotic"], "*", ms=16, color="#ea4335",
-            label=f"асимптота модели: {real['delta_asymptotic']:.2f}°")
-    ax.plot(real["rp_over_R"], real["delta_observed"], "o", ms=8, mfc="white", mec="#ea4335", mew=2,
-            label=f"на r ≈ 60 R_J: JPL {real['delta_observed']:.2f}° / модель {real['delta_model_at_r']:.2f}°")
+    ax.plot(rr, [math.degrees(delta_hyp(r * VOYAGER2["R_jup"], VOYAGER2["v_inf"], VOYAGER2["mu_jup"])) for r in rr],
+            lw=2, color="#ea4335", label="Юпитер («Вояджер-2»), v∞ = 7.60 км/с")
+    ax.plot(voy["rp_over_R"], voy["delta_deg"], "*", ms=15, color="#ea4335",
+            label=f"точка пролёта «Вояджера-2» (10.1 R_Ю, δ = {voy['delta_deg']:.1f}°)")
     ax.set_xlabel("безразмерный перицентр r_p / R_планеты")
     ax.set_ylabel("угол поворота δ, °")
     ax.set_ylim(60, 185)
-    ax.set_title("Универсальная кривая δ = 2·arcsin(1/e):\nединый физический закон для модели и реального космоса")
-    ax.legend(fontsize=7.8, loc="lower left")
+    ax.set_title("Универсальная кривая δ = 2·arcsin(1/e):\nодна и та же формула для Юла и реального Юпитера")
+    ax.legend(fontsize=8, loc="lower left")
 
     ax = axes[1]
-    names = ["Юл:\nдо пролёта", "Юл:\nпосле", "Юпитер:\nдо пролёта", "Юпитер:\nпосле"]
-    v_jool_before = tr.v_arr
-    v_jool_after = float(np.linalg.norm(post_flyby(R_JOOL + 200e3, tr.v_inf_j, +1, tr.v_jool)[1]))
-    vals = [v_jool_before / 1000, v_jool_after / 1000, real["v_before"], real["v_after"]]
-    cols = ["#8ab4f8", "#1a73e8", "#f28b82", "#ea4335"]
-    bars = ax.bar(names, vals, color=cols, alpha=0.9, width=0.58)
+    names = ["До пролёта\n(NASA)", "После пролёта\n(расчёт модели)", "После пролёта\n(факт NASA)"]
+    vals = [voy["v_in_km_s"], voy["v_out_model_km_s"], voy["v_out_nasa_km_s"]]
+    cols = ["#8ab4f8", "#1a73e8", "#34a853"]
+    bars = ax.bar(names, vals, color=cols, alpha=0.9, width=0.52)
     for b, v in zip(bars, vals):
-        ax.text(b.get_x() + b.get_width() / 2, v + 0.35, f"{v:.2f}", ha="center", fontsize=9)
+        ax.text(b.get_x() + b.get_width() / 2, v + 0.4, f"{v:.2f} км/с", ha="center", fontsize=9.5)
     ax.set_ylabel("гелиоцентрическая скорость, км/с")
-    ax.set_ylim(0, 24)
-    ax.set_title("Прирост гелиоцентрической скорости за счёт пращи:\nЮл (h_p = 200 км) и «Вояджер-2» у Юпитера (09.07.1979)")
+    ax.set_ylim(0, 26)
+    ax.set_title("Проверка по миссии «Вояджер-2» у Юпитера (09.07.1979):\nвыходная скорость по нашей 2D-модели и по факту NASA")
     ax.text(0.03, 0.94,
-            f"Юл: +{vals[1]-vals[0]:.2f} км/с (без затрат топлива)\n"
-            f"«Вояджер-2»: +{vals[3]-vals[2]:.2f} км/с (JPL Horizons)",
-            transform=ax.transAxes, va="top", fontsize=9,
+            f"Расчёт 2D-модели: {voy['v_out_model_km_s']:.2f} км/с\n"
+            f"Факт NASA: {voy['v_out_nasa_km_s']:.2f} км/с (погрешность {voy['rel_err_percent']:.1f} %)",
+            transform=ax.transAxes, va="top", fontsize=8.8,
             bbox=dict(boxstyle="round", fc="#f1f3f4", ec="#dadce0"))
     fig.tight_layout()
     fig.savefig(os.path.join(OUT, "fig5_scaling.png"))
@@ -526,7 +478,6 @@ def main():
     print("=" * 78)
     print(f"  большая полуось a_t        : {tr.a_t/1e9:8.2f} млн км")
     print(f"  время перелёта             : {tr.tof/DAY:8.1f} сут ({tr.tof/KSP_DAY:.0f} керб. сут)")
-    print(f"  v∞ отлёта от Кербина       : {tr.v_inf_k:8.1f} м/с")
     print(f"  Δv старта с орбиты 100 км  : {tr.dv_tmi:8.1f} м/с")
     print(f"  орбитальная скорость Юла   : {tr.v_jool:8.1f} м/с")
     print(f"  гелиоцентр. скорость входа : {tr.v_arr:8.1f} м/с")
@@ -544,46 +495,36 @@ def main():
         print(f"  {h:9d} {e_hyp(rp, tr.v_inf_j):8.4f} {math.degrees(delta_hyp(rp, tr.v_inf_j)):8.2f} "
               f"{b_hyp(rp, tr.v_inf_j)/1e3:11.0f} {np.linalg.norm(v_out):11.1f} {el['r_apo']/1e9:15.2f}")
 
-    rp_eeloo = rp_for_apo(A_EELOO * (1 + E_EELOO), tr.v_inf_j, +1, tr.v_jool)
-    print(f"\n  Бесплатный заброс на афелий орбиты Эилу ({A_EELOO*(1+E_EELOO)/1e9:.1f} млн км):")
-    print(f"    высота перицентра h_p = {(rp_eeloo - R_JOOL)/1e3:.0f} км, "
-          f"угол поворота δ = {math.degrees(delta_hyp(rp_eeloo, tr.v_inf_j)):.2f}°")
-
+    rp_eeloo = rp_for_apo(A_EELOO * (1.0 + E_EELOO), tr.v_inf_j, +1, tr.v_jool)
     v_esc_helio = v_esc(A_JOOL, MU_SUN)
     need_delta = math.degrees(math.acos((tr.v_jool ** 2 + tr.v_inf_j ** 2 - v_esc_helio ** 2)
-                                        / (2 * tr.v_jool * tr.v_inf_j)))
+                                        / (2.0 * tr.v_jool * tr.v_inf_j)))
     d_max = math.degrees(delta_hyp(R_JOOL + ATM_JOOL, tr.v_inf_j))
     vinf2, dv_ob = oberth_dv(R_JOOL + ATM_JOOL, tr.v_inf_j, math.radians(d_max), tr.v_jool)
     print(f"\n  Условие ухода из системы Кербола (v_esc = {v_esc_helio:.1f} м/с):")
     print(f"    нужен поворот δ ≥ {need_delta:.2f}°, максимум у границы атмосферы δ_max = {d_max:.2f}°")
     print(f"    эффект Оберта при h_p = 200 км: импульс Δv = {dv_ob:.1f} м/с (v∞: {tr.v_inf_j:.0f} → {vinf2:.0f} м/с)")
 
-    r_min, d_rk4, d_fin_an, d_asym, err_asym, err_fin = fig_verify(tr)
-    print("\n" + "=" * 78)
-    print("3. ВЕРИФИКАЦИЯ МОДЕЛИ")
-    print("=" * 78)
-    print(f"  Уровень 1 — RK4 против аналитики (h_p = 20 000 км, r = 0.95 SOI):")
-    print(f"    δ (RK4) = {d_rk4:.2f}°,  δ (аналитика на 0.95 SOI) = {d_fin_an:.2f}°,  "
-          f"δ (асимптота) = {d_asym:.2f}°")
-    print(f"    r_p (RK4) = {r_min/1e3:.1f} км при заданном 26 000 км")
+    _, d_num_soi = propagate_rk4_from_pericenter(R_JOOL + 20_000e3, tr.v_inf_j, dt=20.0, r_limit=0.95 * SOI_JOOL)
+    d_asym = math.degrees(delta_hyp(R_JOOL + 20_000e3, tr.v_inf_j))
+    voy = check_voyager2()
 
-    real = check_real_world()
-    print(f"\n  Уровень 2 — NASA JPL Horizons («Вояджер-2» у Юпитера, 09.07.1979):")
-    print(f"    r_p = {real['r_p_km']:.0f} км ({real['rp_over_R']:.2f} R_J),  v∞ = {real['v_inf_km_s']:.3f} км/с")
-    print(f"    e = {real['e']:.4f},  δ (асимптота) = {real['delta_asymptotic']:.2f}°")
-    print(f"    угол на r ≈ 60 R_J: модель {real['delta_model_at_r']:.2f}° vs JPL {real['delta_observed']:.2f}° "
-          f"(расхождение {real['err_deg']:.2f}°)")
-    print(f"    гелиоцентрическая скорость: {real['v_before']:.2f} → {real['v_after']:.2f} км/с "
-          f"(+{real['dv_actual']:.2f} км/с)")
+    print("\n" + "=" * 78)
+    print("3. ПРОВЕРКА МОДЕЛИ (RK4 + ТАБЛИЧНЫЕ ДАННЫЕ «ВОЯДЖЕРА-2»)")
+    print("=" * 78)
+    print(f"  Численный расчёт RK4 (шаг 20 с, h_p = 20 000 км):")
+    print(f"    δ (RK4 в пределах СОИ) = {d_num_soi:.2f}°,  δ (формула 2·arcsin(1/e)) = {d_asym:.2f}°")
+    print(f"  Подстановка табличных параметров «Вояджера-2» у Юпитера (NASA, 09.07.1979):")
+    print(f"    r_p = {voy['r_p_km']:.0f} км ({voy['rp_over_R']:.2f} R_Ю),  v∞ = {voy['v_inf_km_s']:.2f} км/с")
+    print(f"    e = {voy['e']:.4f},  расчётный угол поворота δ = {voy['delta_deg']:.2f}°")
+    print(f"    выходная гелиоцентрическая скорость: модель {voy['v_out_model_km_s']:.2f} км/с vs факт NASA "
+          f"{voy['v_out_nasa_km_s']:.2f} км/с (погрешность 2D-модели {voy['rel_err_percent']:.1f} %)")
 
     fig_trajectory(tr, rp_eeloo, R_JOOL + ATM_JOOL)
     fig_design_map(tr)
+    fig_verify(tr)
     fig_oberth(tr)
-    fig_scaling(tr, real)
-    # Удалим старое имя fig6_scaling.png, если оно осталось
-    old_fig6 = os.path.join(OUT, "fig6_scaling.png")
-    if os.path.exists(old_fig6):
-        os.remove(old_fig6)
+    fig_scaling(tr, voy)
 
     summary = dict(
         transfer=asdict(tr),
@@ -595,15 +536,8 @@ def main():
             v_escape_m_s=v_esc_helio,
             oberth_dv_m_s=dv_ob,
         ),
-        rk4_check=dict(
-            delta_rk4_deg=d_rk4,
-            delta_analytic_finite_deg=d_fin_an,
-            delta_asymptotic_deg=d_asym,
-            err_vs_asymptotic_deg=err_asym,
-            err_vs_finite_deg=err_fin,
-            rp_rk4_km=r_min / 1e3,
-        ),
-        voyager2_jpl_check=real,
+        rk4_check=dict(delta_rk4_soi_deg=d_num_soi, delta_formula_deg=d_asym),
+        voyager2_check=voy,
     )
     with open(os.path.join(OUT, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)
