@@ -31,7 +31,9 @@ plt.rcParams.update({
     "axes.axisbelow": True, "savefig.bbox": "tight",
 })
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "out")
+# Корень репозитория — каталог над src/ (результаты всегда в ./out, не в src/out)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+OUT = os.path.join(ROOT, "out")
 os.makedirs(OUT, exist_ok=True)
 
 # --- 1. Константы системы Кербола (KSP 1.12, stock) ---------------------------------

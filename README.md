@@ -14,10 +14,11 @@ NASA JPL Horizons для пролёта «Вояджер-2» у Юпитера. 
 
 ```
 .
-├── sim.py                 # основная модель (перелёт, пролёт, Оберт, Ламберт, верификация)
-├── jpl_horizons.py        # живой REST-парсер NASA JPL Horizons + фит v∞
-├── scale_check.py         # сферы действия vs полная задача трёх тел (RK4)
-├── anim.py                # анимация миссии для видеоотчёта (mp4)
+├── src/                   # код проекта
+│   ├── sim.py             # основная модель (перелёт, пролёт, Оберт, Ламберт, верификация)
+│   ├── jpl_horizons.py    # живой REST-парсер NASA JPL Horizons + фит v∞
+│   ├── scale_check.py     # сферы действия vs полная задача трёх тел (RK4)
+│   └── anim.py            # анимация миссии для видеоотчёта (mp4)
 ├── out/                   # результаты: фигуры, json, видео
 │   ├── fig1_trajectory.png
 │   ├── fig2_design_map.png
@@ -45,15 +46,15 @@ NASA JPL Horizons для пролёта «Вояджер-2» у Юпитера. 
 pip install numpy scipy matplotlib imageio-ffmpeg
 pip install typst            # только для сборки отчёта
 
-python3 sim.py                       # ~3 с: фигуры 1–6 + summary.json
-python3 scale_check.py               # ~15 с: задача трёх тел + фигура 7
-python3 jpl_horizons.py --save out/jpl_snapshot.json   # нужен интернет
-python3 anim.py --seconds 14         # видео out/mission.mp4 (~80 с)
+python3 src/sim.py                   # ~3 с: фигуры 1–6 + summary.json
+python3 src/scale_check.py           # ~15 с: задача трёх тел + фигура 7
+python3 src/jpl_horizons.py --save out/jpl_snapshot.json   # нужен интернет
+python3 src/anim.py --seconds 14     # видео out/mission.mp4 (~80 с)
 
 cd report && python3 build.py        # отчёт report.pdf
 ```
 
-Без интернета: `python3 jpl_horizons.py --no-network` берёт сохранённый снимок.
+Без интернета: `python3 src/jpl_horizons.py --no-network` берёт сохранённый снимок.
 
 ## Что считается
 

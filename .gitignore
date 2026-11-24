@@ -10,6 +10,9 @@ report/_*.pdf
 report/*.pdf.tmp
 .typst/
 
+# PDF не хранятся в репозитории (собираются локально: cd report && python3 build.py)
+*.pdf
+
 # ОС
 .DS_Store
 Thumbs.db
