@@ -12,6 +12,7 @@ pkgs.mkShell {
     ]))
     typst
     ffmpeg
+    stix-two
   ];
 
   shellHook = ''
