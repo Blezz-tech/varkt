@@ -18,7 +18,8 @@ NASA JPL Horizons для пролёта «Вояджер-2» у Юпитера. 
 │   ├── sim.py             # основная модель (перелёт, пролёт, Оберт, Ламберт, верификация)
 │   ├── jpl_horizons.py    # живой REST-парсер NASA JPL Horizons + фит v∞
 │   ├── scale_check.py     # сферы действия vs полная задача трёх тел (RK4)
-│   └── anim.py            # анимация миссии для видеоотчёта (mp4)
+│   ├── anim.py            # анимация миссии для видеоотчёта (mp4)
+│   └── hand_flyby.py      # контрольный расчёт пролёта (150 строк, только math) + рис. 8
 ├── out/                   # результаты: фигуры, json, видео
 │   ├── fig1_trajectory.png
 │   ├── fig2_design_map.png
@@ -27,6 +28,7 @@ NASA JPL Horizons для пролёта «Вояджер-2» у Юпитера. 
 │   ├── fig5_lambert.png
 │   ├── fig6_scaling.png
 │   ├── fig7_conics_vs_3body.png
+│   ├── fig8_flyby_geometry.png
 │   ├── summary.json
 │   ├── conics_vs_3body.json
 │   ├── jpl_snapshot.json
@@ -38,7 +40,8 @@ NASA JPL Horizons для пролёта «Вояджер-2» у Юпитера. 
 ├── fonts/                 # Tinos (метрический аналог Times New Roman)
 ├── docs/
 │   ├── VARKT_Voyager_predlozhenie.md   # предложение темы
-│   └── SOLO_PLAN.md       # разбор проекта и план «что делаю лично я» (30.11 / 10.12)
+│   ├── SOLO_PLAN.md       # разбор проекта и план «что делаю лично я» (30.11 / 10.12)
+│   └── WEEK_7_DAYS.md     # записка на неделю: модель, расчёт, результаты, защита
 └── materials/
     └── CONTEXT.md         # карта проекта для передачи в новый чат
 ```
