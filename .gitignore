@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Служебное Typst/Python
+report/_*.typ
+report/_*.pdf
+report/*.pdf.tmp
+.typst/
+
+# ОС
+.DS_Store
+Thumbs.db
