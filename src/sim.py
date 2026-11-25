@@ -1,11 +1,11 @@
 """
 Физико-математическая модель гравитационного манёвра у газового гиганта
-(пролёт Юла в системе Кербола и проверка формул на справочных данных «Вояджера-2»).
+(пролёт Джула в системе Кербола и проверка формул на справочных данных «Вояджера-2»).
 
 Модель: плоская (2D), метод точечных сфер действия (patched conics).
 Участки:
-  1) гомановский перелёт Кербин -> Юл в поле Кербола;
-  2) гиперболический пролёт в сфере действия Юла (аналитика + простой цикл RK4);
+  1) гомановский перелёт Кербин -> Джул в поле Кербола;
+  2) гиперболический пролёт в сфере действия Джула (аналитика + простой цикл RK4);
   3) послепролётная гелиоцентрическая орбита («треугольник скоростей»);
   4) условие ухода из системы и импульс в перицентре (эффект Оберта);
   5) проверка формул на табличных параметрах пролёта «Вояджера-2» у Юпитера (NASA).
@@ -68,7 +68,7 @@ def v_esc(r: float, mu: float) -> float:
     return math.sqrt(2.0 * mu / r)
 
 
-# --- 2. Гомановский перелёт Кербин -> Юл ---------------------------------------------
+# --- 2. Гомановский перелёт Кербин -> Джул ---------------------------------------------
 
 @dataclass
 class Transfer:
@@ -84,7 +84,7 @@ class Transfer:
 
 
 def launch_window(r1: float = R_KERBIN + 100_000.0) -> Transfer:
-    """Расчёт полуэллипса Гомана от орбиты Кербина до орбиты Юла."""
+    """Расчёт полуэллипса Гомана от орбиты Кербина до орбиты Джула."""
     a_t = 0.5 * (A_KERBIN + A_JOOL)
     tof = math.pi * math.sqrt(a_t ** 3 / MU_SUN)
     v_c1 = v_circ(A_KERBIN, MU_SUN)
@@ -99,7 +99,7 @@ def launch_window(r1: float = R_KERBIN + 100_000.0) -> Transfer:
     return Transfer(r1, a_t, tof, dv, v_inf_k, v_arr, v_j, v_inf_j, math.degrees(phase))
 
 
-# --- 3. Гиперболический пролёт в сфере действия Юла ----------------------------------
+# --- 3. Гиперболический пролёт в сфере действия Джула ----------------------------------
 
 def e_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
     """Эксцентриситет пролётной гиперболы: e = 1 + r_p * v_inf^2 / mu."""
@@ -112,7 +112,12 @@ def delta_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
 
 
 def b_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
-    """Прицельный параметр: b = r_p * sqrt((e + 1) / (e - 1))."""
+    """Прицельный параметр: b = r_p * sqrt((e + 1) / (e - 1)).
+
+    При vinf -> 0 гипербола вырождается в параболу (e -> 1) и b -> inf.
+    """
+    if vinf <= 0.0:
+        return math.inf
     e = e_hyp(rp, vinf, mu)
     return rp * math.sqrt((e + 1.0) / (e - 1.0))
 
@@ -205,13 +210,54 @@ def rp_for_apo(apo_target: float, vinf: float, side: int, v_j: float,
     return 0.5 * (lo + hi)
 
 
-def oberth_dv(rp: float, vinf: float, delta: float, v_j: float,
+def oberth_dv(rp: float, vinf: float, v_j: float,
               mu: float = MU_JOOL) -> tuple[float, float]:
-    """Импульс Delta_v в перицентре гиперболы для достижения второй космической скорости."""
+    """Импульс Delta_v в перицентре гиперболы для достижения второй космической скорости.
+
+    Самосогласованный расчёт: импульс увеличивает v_inf до v_inf', что меняет
+    эксцентриситет e' = 1 + r_p * v_inf'^2 / mu и угол поворота
+    delta' = 2 * arcsin(1 / e'). Требуемая v_inf' — наименьший корень уравнения
+    |v_вых(v_inf', delta')| = v_esc (треугольник скоростей с обновлённым delta').
+    Фиксирование delta на доимпульсном значении (квадратичная формула) занижает
+    Delta_v: при h_p = 200 км даёт 58.9 м/с вместо самосогласованных ~128 м/с.
+    Корень ищется сканированием (первое пересечение) + делением отрезка пополам,
+    т.к. |v_вых(v_inf')| немонотонен.
+    """
     v_esc_helio = v_esc(A_JOOL, MU_SUN)
-    bb = -2.0 * v_j * math.cos(delta)
-    cc = v_j ** 2 - v_esc_helio ** 2
-    vinf2 = (-bb + math.sqrt(bb * bb - 4.0 * cc)) / 2.0
+
+    def v_out_of(vinf2: float) -> float:
+        d = delta_hyp(rp, vinf2, mu)
+        return math.sqrt(v_j ** 2 + vinf2 ** 2 - 2.0 * v_j * vinf2 * math.cos(d))
+
+    def gap(vinf2: float) -> float:
+        return v_out_of(vinf2) - v_esc_helio
+
+    if gap(vinf) >= 0.0:
+        return vinf, 0.0
+    # Верхняя граница с gap > 0 (при v_inf' -> inf выходная скорость -> inf).
+    hi = max(2.0 * vinf, vinf + 1000.0)
+    while gap(hi) <= 0.0 and hi < 1e7:
+        hi = vinf + 2.0 * (hi - vinf)
+    # Первое пересечение нуля (минимальный v_inf' => минимальный Delta_v).
+    n_scan = 500
+    prev = vinf
+    bracket = None
+    for i in range(1, n_scan + 1):
+        cur = vinf + (hi - vinf) * i / n_scan
+        if gap(cur) >= 0.0:
+            bracket = (prev, cur)
+            break
+        prev = cur
+    if bracket is None:  # pragma: no cover — недостижимо при hi с gap > 0
+        bracket = (vinf, hi)
+    lo, hi_b = bracket
+    for _ in range(80):
+        mid = 0.5 * (lo + hi_b)
+        if gap(mid) >= 0.0:
+            hi_b = mid
+        else:
+            lo = mid
+    vinf2 = 0.5 * (lo + hi_b)
     dv = math.sqrt(vinf2 ** 2 + 2.0 * mu / rp) - math.sqrt(vinf ** 2 + 2.0 * mu / rp)
     return vinf2, dv
 
@@ -280,7 +326,7 @@ def fig_trajectory(tr: Transfer, rp_eeloo: float, rp_low: float):
     fig, ax = plt.subplots(figsize=(7.6, 7.2))
     ax.set_aspect("equal")
     for r, c, lab in ((A_KERBIN, "#8ab4f8", "орбита Кербина"),
-                      (A_JOOL, "#34a853", "орбита Юла")):
+                      (A_JOOL, "#34a853", "орбита Джула")):
         x, y = _circle(r)
         ax.plot(x / 1e9, y / 1e9, color=c, lw=1.2, label=lab)
     x, y = _ellipse(A_EELOO, E_EELOO, math.radians(260))
@@ -290,7 +336,7 @@ def fig_trajectory(tr: Transfer, rp_eeloo: float, rp_low: float):
     e_tr = (A_JOOL - A_KERBIN) / (A_JOOL + A_KERBIN)
     r_tr = tr.a_t * (1.0 - e_tr ** 2) / (1.0 + e_tr * np.cos(th_tr))
     ax.plot(r_tr * np.cos(th_tr) / 1e9, r_tr * np.sin(th_tr) / 1e9,
-            color="#ea4335", lw=2.3, label="гомановский перелёт Кербин → Юл")
+            color="#ea4335", lw=2.3, label="гомановский перелёт Кербин → Джул")
 
     r_meet = np.array([-A_JOOL, 0.0])
     for rp, color, lab in ((rp_low, "#e37400", "после пролёта h_p = 200 км (афелий 711 млн км)"),
@@ -300,13 +346,13 @@ def fig_trajectory(tr: Transfer, rp_eeloo: float, rp_low: float):
         ax.plot(xh / 1e9, yh / 1e9, color=color, lw=1.9, label=lab)
 
     ax.plot(0, 0, "o", ms=14, color="#fbbc04", label="Кербол")
-    ax.plot(-A_JOOL / 1e9, 0, "o", ms=9, color="#34a853", label="точка встречи с Юлом")
+    ax.plot(-A_JOOL / 1e9, 0, "o", ms=9, color="#34a853", label="точка встречи с Джулом")
     ax.plot(A_KERBIN / 1e9, 0, "o", ms=7, color="#4285f4", label="старт с Кербина")
     ax.set_xlim(-125, 165)
     ax.set_ylim(-135, 135)
     ax.set_xlabel("x, млн км")
     ax.set_ylabel("y, млн км")
-    ax.set_title("Схема миссии (2D): перелёт Кербин → Юл,\nгравитационный пролёт и послепролётные орбиты")
+    ax.set_title("Схема миссии (2D): перелёт Кербин → Джул,\nгравитационный пролёт и послепролётные орбиты")
     ax.legend(loc="upper right", fontsize=7.6)
     fig.savefig(os.path.join(OUT, "fig1_trajectory.png"))
     plt.close(fig)
@@ -334,13 +380,13 @@ def fig_design_map(tr: Transfer, hs=np.linspace(200, 3e5, 900)):
 
     ax = axes[1]
     need_esc = np.array([
-        oberth_dv(R_JOOL + h * 1000, tr.v_inf_j, delta_hyp(R_JOOL + h * 1000, tr.v_inf_j), tr.v_jool)[1]
+        oberth_dv(R_JOOL + h * 1000, tr.v_inf_j, tr.v_jool)[1]
         for h in hs
     ])
     ax.plot(hs, need_esc, color="#e37400", lw=2)
     ax.fill_between(hs, 0, need_esc, color="#e37400", alpha=0.12)
     ax.axvspan(0, ATM_JOOL / 1000, color="#fbbc04", alpha=0.35)
-    ax.text(ATM_JOOL / 1000 * 1.15, float(np.max(need_esc)) * 0.55, "атмосфера\nЮла",
+    ax.text(ATM_JOOL / 1000 * 1.15, float(np.max(need_esc)) * 0.55, "атмосфера\nДжула",
             fontsize=8, color="#b06000")
     ax.set_xscale("log")
     ax.set_xlim(150, 3.2e5)
@@ -373,11 +419,11 @@ def fig_verify(tr: Transfer):
             label="численно (метод RK4, шаг 20 с)")
     ax.plot(rr * np.cos(nu) / 1e3, rr * np.sin(nu) / 1e3, "--", lw=1.4, color="#ea4335",
             label="формула коники r(ν) = p / (1 + e cos ν)")
-    ax.plot(0, 0, "o", ms=13, color="#34a853", label="Юл")
+    ax.plot(0, 0, "o", ms=13, color="#34a853", label="Джул")
     ax.set_aspect("equal", adjustable="box")
     ax.ticklabel_format(style="sci", scilimits=(-3, 3), axis="both")
     ax.set_xlabel("x, км"); ax.set_ylabel("y, км")
-    ax.set_title("Гипербола пролёта Юла (h_p = 20 000 км):\nсовпадение численного расчёта RK4 и формулы коники")
+    ax.set_title("Гипербола пролёта Джула (h_p = 20 000 км):\nсовпадение численного расчёта RK4 и формулы коники")
     ax.legend(fontsize=8, loc="lower left")
 
     ax = axes[1]
@@ -407,7 +453,7 @@ def fig_oberth(tr: Transfer):
     ax.plot(dlt, v_out, color="#1a73e8", lw=2, label="|v_вых| после пролёта")
     ax.axhline(v_esc(A_JOOL, MU_SUN), color="#9334e6", ls="--", lw=1.6,
                label="вторая космическая Кербола (5839 м/с)")
-    ax.axhline(tr.v_jool, color="#9aa0a6", ls=":", lw=1.2, label="скорость Юла (4129 м/с)")
+    ax.axhline(tr.v_jool, color="#9aa0a6", ls=":", lw=1.2, label="скорость Джула (4129 м/с)")
     for h in (200, 5000, 50_000):
         d = math.degrees(delta_hyp(R_JOOL + h * 1e3, tr.v_inf_j))
         vv = float(np.linalg.norm(post_flyby(R_JOOL + h * 1e3, tr.v_inf_j, +1, tr.v_jool)[1]))
@@ -419,15 +465,16 @@ def fig_oberth(tr: Transfer):
 
     ax = axes[1]
     hs2 = np.linspace(200, 40_000, 300)
-    dvs = [oberth_dv(R_JOOL + h * 1e3, tr.v_inf_j, delta_hyp(R_JOOL + h * 1e3, tr.v_inf_j), tr.v_jool)[1]
+    dvs = [oberth_dv(R_JOOL + h * 1e3, tr.v_inf_j, tr.v_jool)[1]
            for h in hs2]
     ax.plot(hs2, dvs, color="#1a73e8", lw=2)
     ax.fill_between(hs2, dvs, color="#1a73e8", alpha=0.12)
     ax.axvline(ATM_JOOL / 1000, color="#fbbc04", lw=4, alpha=0.5)
-    ax.text(ATM_JOOL / 1000 * 1.3, 900, "граница атмосферы\n(200 км)", fontsize=8, color="#b06000")
+    ax.text(ATM_JOOL / 1000 * 1.3, float(np.max(dvs)) * 0.55, "граница атмосферы\n(200 км)",
+            fontsize=8, color="#b06000")
     ax.set_xlabel("высота перицентра h_p, км")
     ax.set_ylabel("импульс Δv для ухода из системы, м/с")
-    ax.set_title("Эффект Оберта: импульс в низком перицентре\n(58.9 м/с при h_p = 200 км) закрывает недостаток поворота")
+    ax.set_title(f"Эффект Оберта: импульс в низком перицентре\n({dvs[0]:.1f} м/с при h_p = 200 км) закрывает недостаток поворота")
     fig.tight_layout()
     fig.savefig(os.path.join(OUT, "fig4_oberth.png"))
     plt.close(fig)
@@ -438,7 +485,7 @@ def fig_scaling(tr: Transfer, voy: dict):
     ax = axes[0]
     rr = np.linspace(1.05, 12, 500)
     ax.plot(rr, [math.degrees(delta_hyp(r * R_JOOL, tr.v_inf_j)) for r in rr],
-            lw=2, color="#1a73e8", label="Юл (система Кербола), v∞ = 1756 м/с")
+            lw=2, color="#1a73e8", label="Джул (система Кербола), v∞ = 1756 м/с")
     ax.plot(rr, [math.degrees(delta_hyp(r * VOYAGER2["R_jup"], VOYAGER2["v_inf"], VOYAGER2["mu_jup"])) for r in rr],
             lw=2, color="#ea4335", label="Юпитер («Вояджер-2»), v∞ = 7.60 км/с")
     ax.plot(voy["rp_over_R"], voy["delta_deg"], "*", ms=15, color="#ea4335",
@@ -446,7 +493,7 @@ def fig_scaling(tr: Transfer, voy: dict):
     ax.set_xlabel("безразмерный перицентр r_p / R_планеты")
     ax.set_ylabel("угол поворота δ, °")
     ax.set_ylim(60, 185)
-    ax.set_title("Универсальная кривая δ = 2·arcsin(1/e):\nодна и та же формула для Юла и реального Юпитера")
+    ax.set_title("Универсальная кривая δ = 2·arcsin(1/e):\nодна и та же формула для Джула и реального Юпитера")
     ax.legend(fontsize=8, loc="lower left")
 
     ax = axes[1]
@@ -479,10 +526,10 @@ def main():
     print(f"  большая полуось a_t        : {tr.a_t/1e9:8.2f} млн км")
     print(f"  время перелёта             : {tr.tof/DAY:8.1f} сут ({tr.tof/KSP_DAY:.0f} керб. сут)")
     print(f"  Δv старта с орбиты 100 км  : {tr.dv_tmi:8.1f} м/с")
-    print(f"  орбитальная скорость Юла   : {tr.v_jool:8.1f} м/с")
+    print(f"  орбитальная скорость Джула   : {tr.v_jool:8.1f} м/с")
     print(f"  гелиоцентр. скорость входа : {tr.v_arr:8.1f} м/с")
     print(f"  избыточная скорость v∞     : {tr.v_inf_j:8.1f} м/с")
-    print(f"  угол опережения Юла        : {tr.phase_deg:8.2f}°")
+    print(f"  угол опережения Джула        : {tr.phase_deg:8.2f}°")
 
     print("\n" + "=" * 78)
     print("2. ГРАВИТАЦИОННЫЙ МАНЁВР У ЮЛА")
@@ -500,7 +547,7 @@ def main():
     need_delta = math.degrees(math.acos((tr.v_jool ** 2 + tr.v_inf_j ** 2 - v_esc_helio ** 2)
                                         / (2.0 * tr.v_jool * tr.v_inf_j)))
     d_max = math.degrees(delta_hyp(R_JOOL + ATM_JOOL, tr.v_inf_j))
-    vinf2, dv_ob = oberth_dv(R_JOOL + ATM_JOOL, tr.v_inf_j, math.radians(d_max), tr.v_jool)
+    vinf2, dv_ob = oberth_dv(R_JOOL + ATM_JOOL, tr.v_inf_j, tr.v_jool)
     print(f"\n  Условие ухода из системы Кербола (v_esc = {v_esc_helio:.1f} м/с):")
     print(f"    нужен поворот δ ≥ {need_delta:.2f}°, максимум у границы атмосферы δ_max = {d_max:.2f}°")
     print(f"    эффект Оберта при h_p = 200 км: импульс Δv = {dv_ob:.1f} м/с (v∞: {tr.v_inf_j:.0f} → {vinf2:.0f} м/с)")

@@ -16,7 +16,7 @@
     "delta_max_deg": 138.9782669508796,
     "need_delta_escape_deg": 164.31503568061342,
     "v_escape_m_s": 5838.882045876995,
-    "oberth_dv_m_s": 58.900835530825134
+    "oberth_dv_m_s": 128.2118103297671
   },
   "rk4_check": {
     "delta_rk4_soi_deg": 102.25636745289232,

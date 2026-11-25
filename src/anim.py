@@ -2,11 +2,12 @@
 Анимация миссии «Вояджер в системе Кербола» (out/mission.mp4).
 
 Сценарий (16 с, 30 кадров/с):
-  1) Фаза 1 (0–5.5 с): гомановский перелёт Кербин → Юл.
-     Кербин и Юл вращаются по круговым орбитам с реальным временем миссии t
-     (Юл из угла опережения 96.6° приходит в точку встречи с КА).
-  2) Фаза 2 (5.5–10.5 с): глубокий гиперболический пролёт Юла у границы атмосферы
-     (h_p = 200 км, поворот δ = 138.98°) + импульс Оберта Δv = 58.9 м/с в перицентре.
+  1) Фаза 1 (0–5.5 с): гомановский перелёт Кербин → Джул.
+     Кербин и Джул вращаются по круговым орбитам с реальным временем миссии t
+     (Джул из угла опережения 96.6° приходит в точку встречи с КА).
+  2) Фаза 2 (5.5–10.5 с): глубокий гиперболический пролёт Джула у границы атмосферы
+     (h_p = 200 км, поворот δ = 138.98°) + импульс Оберта Δv ≈ 128 м/с в перицентре
+     (самосогласованный расчёт: после импульса δ' ≈ 125°).
   3) Фаза 3 (10.5–16 с): уход из системы Кербола!
      Показаны обе ветви после манёвра:
        - пунктиром: пассивный заброс к афелию Эилу (h_p = 35 096 км, Δv = 0);
@@ -103,9 +104,9 @@ def kepler_hyperbola_pos(r0: np.ndarray, v0: np.ndarray, dt: float, mu: float = 
 
 def hyperbola_local(rp: float, e: float, t: float, mu: float = MU_JOOL) -> np.ndarray:
     """
-    Положение КА относительно Юла (2D) в момент времени t от перицентра.
-    В точке встречи (-A_JOOL, 0) Юл летит вниз (v_J = (0, -v_j)), а КА входит снизу вдоль +y,
-    огибает Юл сзади по орбите (сверху) на высоте h_p = 200 км и разворачивается на 138.98°!
+    Положение КА относительно Джула (2D) в момент времени t от перицентра.
+    В точке встречи (-A_JOOL, 0) Джул летит вниз (v_J = (0, -v_j)), а КА входит снизу вдоль +y,
+    огибает Джул сзади по орбите (сверху) на высоте h_p = 200 км и разворачивается на 138.98°!
     """
     a_abs = rp / (e - 1.0)
     n = math.sqrt(mu / a_abs ** 3)
@@ -122,7 +123,7 @@ def hyperbola_local(rp: float, e: float, t: float, mu: float = MU_JOOL) -> np.nd
 
 
 def planet_positions(t_mission: float, tr_tof: float):
-    """Положения Кербина и Юла в физический момент времени t_mission."""
+    """Положения Кербина и Джула в физический момент времени t_mission."""
     ang_k = OMEGA_KERBIN * t_mission
     ang_j = math.pi + OMEGA_JOOL * (t_mission - tr_tof)
     pos_k = np.array([A_KERBIN * math.cos(ang_k), A_KERBIN * math.sin(ang_k)])
@@ -131,23 +132,43 @@ def planet_positions(t_mission: float, tr_tof: float):
 
 
 def build_scene(n_tr: int = 900, n_fly: int = 1200, n_post: int = 1200):
-    """Строит полную миссию: перелёт -> пролёт Юла (h_p = 200 км + Оберт) -> выход из системы звезды."""
+    """Строит полную миссию: перелёт -> пролёт Джула (h_p = 200 км + Оберт) -> выход из системы звезды."""
     tr = launch_window()
-    h_p_km = ATM_JOOL / 1e3  # 200 км (граница атмосферы Юла)
+    h_p_km = ATM_JOOL / 1e3  # 200 км (граница атмосферы Джула)
     rp = R_JOOL + ATM_JOOL
 
-    # Фаза 1: перелёт Кербин -> Юл
+    # Фаза 1: перелёт Кербин -> Джул
     t_tr = np.linspace(0.0, tr.tof, n_tr)
     r0_tr = np.array([A_KERBIN, 0.0])
     v0_tr = np.array([0.0, math.sqrt(MU_SUN * (2.0 / A_KERBIN - 1.0 / tr.a_t))])
     path_tr = np.array([kepler_ellipse_pos(r0_tr, v0_tr, t) for t in t_tr])
 
-    # Фаза 2: глубокий пролёт вблизи Юла (окно ±1.8 сут вокруг перицентра)
+    # Фаза 2: глубокий пролёт вблизи Джула (окно ±1.8 сут вокруг перицентра).
+    # Импульс Оберта в перицентре: входящая ветвь (t < 0) — пассивная гипербола,
+    # исходящая (t >= 0) — гипербола с увеличенной v_inf. Перицентр при этом
+    # неподвижен: исходящая ветвь поворачивается так, чтобы точка перицентра
+    # совпала с входящей (импульс направлен вдоль скорости).
+    vinf_esc, dv_oberth = oberth_dv(rp, tr.v_inf_j, tr.v_jool)
+    # Небольшой запас (+2%), чтобы гелиоцентрическая орбита была явно гиперболической.
+    vinf_boosted = vinf_esc * 1.02
     e_h = 1.0 + rp * tr.v_inf_j ** 2 / MU_JOOL
+    e_out = 1.0 + rp * vinf_boosted ** 2 / MU_JOOL
+    rot_in = math.acos(-1.0 / e_h) - 0.5 * math.pi
+    rot_out = math.acos(-1.0 / e_out) - 0.5 * math.pi
+    d_rot = rot_in - rot_out
+    c_rot, s_rot = math.cos(d_rot), math.sin(d_rot)
     t_half = 1.8 * DAY
     dt_fly = np.linspace(-t_half, t_half, n_fly)
     t_fly = tr.tof + dt_fly
-    loc_fly = np.array([hyperbola_local(rp, e_h, dt) for dt in dt_fly])
+    loc_list = []
+    for dt in dt_fly:
+        if dt < 0.0:
+            loc_list.append(hyperbola_local(rp, e_h, dt))
+        else:
+            loc = hyperbola_local(rp, e_out, dt)
+            loc_list.append(np.array([c_rot * loc[0] - s_rot * loc[1],
+                                      s_rot * loc[0] + c_rot * loc[1]]))
+    loc_fly = np.array(loc_list)
     path_fly = []
     for dt, loc in zip(dt_fly, loc_fly):
         _, jpos, ang_j = planet_positions(tr.tof + dt, tr.tof)
@@ -156,19 +177,28 @@ def build_scene(n_tr: int = 900, n_fly: int = 1200, n_post: int = 1200):
         path_fly.append(jpos + np.array([c * loc[0] - s * loc[1], s * loc[0] + c * loc[1]]))
     path_fly = np.array(path_fly)
 
-    # Фаза 3: УХОД ИЗ СИСТЕМЫ ЗВЕЗДЫ (пролёт h_p = 200 км + импульс Оберта в перицентре)
+    # Фаза 3: УХОД ИЗ СИСТЕМЫ ЗВЕЗДЫ (пролёт h_p = 200 км + импульс Оберта в перицентре).
+    # Гелиоцентрическая ветвь стартует непрерывно от конца фазы 2 (без телепорта
+    # обратно в точку встречи): начальное состояние — фактическое положение КА
+    # в конце пролёта + скорость Джула в этот момент + повёрнутая v_inf'.
     d_max = delta_hyp(rp, tr.v_inf_j)
-    vinf_esc, dv_oberth = oberth_dv(rp, tr.v_inf_j, d_max, tr.v_jool)
-    vinf_escape_hyp = vinf_esc * 1.02
-    vinf_out_std = turn_vinf(np.array([0.0, -vinf_escape_hyp]), d_max, +1)
+    d_boosted = delta_hyp(rp, vinf_boosted)
+    vinf_out_std = turn_vinf(np.array([0.0, -vinf_boosted]), d_boosted, +1)
     v_out_meet = -(np.array([0.0, tr.v_jool]) + vinf_out_std)
     r_meet = np.array([-A_JOOL, 0.0])
     v_esc_sun = math.sqrt(2.0 * MU_SUN / A_JOOL)
+    r_start = path_fly[-1].copy()
+    _, _, ang_end = planet_positions(tr.tof + t_half, tr.tof)
+    d_ang_end = ang_end - math.pi
+    c_end, s_end = math.cos(d_ang_end), math.sin(d_ang_end)
+    v_start = np.array([c_end * v_out_meet[0] - s_end * v_out_meet[1],
+                        s_end * v_out_meet[0] + c_end * v_out_meet[1]])
+    eps_sun = 0.5 * float(v_start @ v_start) - MU_SUN / float(np.linalg.norm(r_start))
 
     # Продолжаем полёт на 850 суток — КА пробивает внешнюю орбиту Эилу (113.5 млн км) и уходит на 270 млн км!
     dt_post = np.linspace(0.0, 850.0 * DAY, n_post)
     t_post = tr.tof + t_half + dt_post
-    path_post = np.array([kepler_hyperbola_pos(r_meet, v_out_meet, dt) for dt in dt_post])
+    path_post = np.array([kepler_hyperbola_pos(r_start, v_start, dt) for dt in dt_post])
 
     # Дополнительно для сравнения на фоне: пассивная замкнутая орбита к афелию Эилу (h_p = 35 096 км, Δv = 0)
     rp_eeloo = R_JOOL + 35_096e3
@@ -180,15 +210,17 @@ def build_scene(n_tr: int = 900, n_fly: int = 1200, n_post: int = 1200):
                                for dt in np.linspace(0.0, T_eeloo, 600)])
 
     return dict(
-        tr=tr, rp=rp, h_p_km=h_p_km, e_h=e_h,
+        tr=tr, rp=rp, h_p_km=h_p_km, e_h=e_h, e_out=e_out,
         t_tr=t_tr, path_tr=path_tr,
         dt_fly=dt_fly, t_fly=t_fly, loc_fly=loc_fly, path_fly=path_fly,
         dt_post=dt_post, t_post=t_post, path_post=path_post,
         path_eeloo_ref=path_eeloo_ref,
-        v_out_norm=float(np.linalg.norm(v_out_meet)),
+        v_out_norm=float(np.linalg.norm(v_start)),
+        eps_sun=eps_sun,
         v_esc_sun=v_esc_sun,
         dv_oberth=dv_oberth,
         delta_deg=math.degrees(d_max),
+        delta_boosted_deg=math.degrees(d_boosted),
     )
 
 
@@ -202,13 +234,13 @@ def make(out_path: str, fps: int = 30, seconds: int = 16):
     ax.set_ylim(-290, 160)
     ax.set_xlabel("x, млн км")
     ax.set_ylabel("y, млн км")
-    ax.set_title("Гравитационный манёвр у Юла и уход КА за пределы планетной системы")
+    ax.set_title("Гравитационный манёвр у Джула и уход КА за пределы планетной системы")
 
     th = np.linspace(0, 2 * np.pi, 600)
     ax.plot(A_KERBIN * np.cos(th) / 1e9, A_KERBIN * np.sin(th) / 1e9,
             color="#8ab4f8", lw=1.1, label="орбита Кербина")
     ax.plot(A_JOOL * np.cos(th) / 1e9, A_JOOL * np.sin(th) / 1e9,
-            color="#34a853", lw=1.2, label="орбита Юла")
+            color="#34a853", lw=1.2, label="орбита Джула")
     # Внешняя граница планетной системы — орбита Эилу
     b_ee = A_EELOO * math.sqrt(1.0 - E_EELOO ** 2)
     xe, ye = A_EELOO * np.cos(th) - A_EELOO * E_EELOO, b_ee * np.sin(th)
@@ -221,30 +253,30 @@ def make(out_path: str, fps: int = 30, seconds: int = 16):
             color="#9334e6", lw=1.0, ls=":", alpha=0.65, label="пассивный предел к Эилу (Δv=0)")
     ax.plot([0], [0], "o", ms=13, color="#fbbc04", label="Кербол (звезда)")
 
-    jool_trail, = ax.plot([], [], color="#34a853", lw=2.5, alpha=0.35, label="путь Юла по орбите")
-    line_t, = ax.plot([], [], color="#ea4335", lw=1.9, label="перелёт Кербин → Юл")
+    jool_trail, = ax.plot([], [], color="#34a853", lw=2.5, alpha=0.35, label="путь Джула по орбите")
+    line_t, = ax.plot([], [], color="#ea4335", lw=1.9, label="перелёт Кербин → Джул")
     line_p, = ax.plot([], [], color="#e37400", lw=2.3, label="траектория ухода из системы!")
 
     kerbin_dot, = ax.plot([], [], "o", ms=6.5, color="#1a73e8", zorder=4, label="Кербин")
-    jool_dot, = ax.plot([], [], "o", ms=10.5, color="#34a853", mec="#1b5e20", mew=1.1, zorder=5, label="Юл")
+    jool_dot, = ax.plot([], [], "o", ms=10.5, color="#34a853", mec="#1b5e20", mew=1.1, zorder=5, label="Джул")
     ship, = ax.plot([], [], "o", ms=8.5, color="white", mec="#202124", mew=1.5, zorder=6, label="КА")
     ax.legend(loc="upper right", fontsize=7.3)
 
-    # Врезка: крупный план глубокой гиперболы у Юла (h_p = 200 км, поворот 138.98°)
+    # Врезка: крупный план глубокой гиперболы у Джула (h_p = 200 км, поворот 138.98°)
     axz = fig.add_axes([0.70, 0.56, 0.28, 0.36])
     axz.set_aspect("equal", adjustable="box")
     axz.autoscale(False)
     zoom_kkm = 140.0
     axz.set_xlim(-zoom_kkm, zoom_kkm)
     axz.set_ylim(-zoom_kkm, zoom_kkm)
-    axz.set_title("Система Юла (h_p = 200 км, δ = 139°)", fontsize=9.2)
+    axz.set_title("Система Джула (h_p = 200 км, δ = 139°)", fontsize=9.2)
     axz.tick_params(labelsize=7.5)
     axz.set_xlabel("x, тыс. км", fontsize=8)
     axz.set_ylabel("y, тыс. км", fontsize=8)
     axz.add_patch(plt.Circle((0, 0), R_JOOL / 1e6, color="#34a853", alpha=0.9, zorder=3))
     axz.annotate("", xy=(0, -65), xytext=(0, 0),
                  arrowprops=dict(arrowstyle="->", color="#1b5e20", lw=1.6))
-    axz.text(6, -60, "v_Юла", fontsize=8, color="#1b5e20")
+    axz.text(6, -60, "v_Джула", fontsize=8, color="#1b5e20")
     axz.plot(sc["loc_fly"][:, 0] / 1e6, sc["loc_fly"][:, 1] / 1e6,
              color="#e37400", lw=1.0, alpha=0.30, ls="--", zorder=1)
     zline, = axz.plot([], [], color="#e37400", lw=2.0, zorder=4)
@@ -274,10 +306,10 @@ def make(out_path: str, fps: int = 30, seconds: int = 16):
             line_t.set_data(sc["path_tr"][:k + 1, 0] / 1e9, sc["path_tr"][:k + 1, 1] / 1e9)
             pos_k, pos_j, ang_j = planet_positions(t_mis, sc["tr"].tof)
             burn_flash.set_data([], [])
-            phase = "Фаза 1: гомановский перелёт Кербин → Юл\n(обе планеты движутся к точке встречи)"
+            phase = "Фаза 1: гомановский перелёт Кербин → Джул\n(обе планеты движутся к точке встречи)"
             info = (
                 f"время миссии  : {t_mis/DAY:7.1f} сут\n"
-                f"долгота Юла   : {math.degrees(ang_j)%360:7.1f}°\n"
+                f"долгота Джула   : {math.degrees(ang_j)%360:7.1f}°\n"
                 f"расст. до КА  : {np.linalg.norm(pos)/1e9:7.2f} млн км\n"
                 f"Δv старта     : {sc['tr'].dv_tmi:7.0f} м/с\n"
                 f"v прилёта     : {sc['tr'].v_arr:7.0f} м/с"
@@ -296,10 +328,11 @@ def make(out_path: str, fps: int = 30, seconds: int = 16):
                 burn_flash.set_data([], [])
             pos_k, pos_j, ang_j = planet_positions(t_mis, sc["tr"].tof)
             h_now = (np.linalg.norm(sc["loc_fly"][k]) - R_JOOL) / 1e3
-            phase = "Фаза 2: праща Юла (h_p = 200 км, δ = 139°)\n+ импульс Оберта Δv = 58.9 м/с в перицентре!"
+            phase = (f"Фаза 2: праща Джула (h_p = 200 км, δ = 139°)\n"
+                     f"+ импульс Оберта Δv = {sc['dv_oberth']:.1f} м/с в перицентре!")
             info = (
                 f"время миссии  : {t_mis/DAY:7.1f} сут\n"
-                f"высота над Юл.: {h_now:7.0f} км\n"
+                f"высота над Джул.: {h_now:7.0f} км\n"
                 f"перицентр h_p : {sc['h_p_km']:7.0f} км\n"
                 f"поворот δ     : {sc['delta_deg']:7.2f}°\n"
                 f"импульс Оберта: {sc['dv_oberth']:7.1f} м/с"
@@ -315,8 +348,7 @@ def make(out_path: str, fps: int = 30, seconds: int = 16):
             r_now = float(np.linalg.norm(pos))
             v_loc_esc = math.sqrt(2.0 * MU_SUN / r_now)
             # Текущая скорость КА из закона сохранения гелиоцентрической энергии
-            eps_sun = 0.5 * sc["v_out_norm"] ** 2 - MU_SUN / A_JOOL
-            v_now = math.sqrt(2.0 * (eps_sun + MU_SUN / r_now))
+            v_now = math.sqrt(2.0 * (sc["eps_sun"] + MU_SUN / r_now))
             phase = "Фаза 3: УХОД ИЗ СИСТЕМЫ КЕРБОЛА!\n(КА пересекает все орбиты с v > v_esc)"
             info = (
                 f"время миссии  : {t_mis/DAY:7.1f} сут\n"
