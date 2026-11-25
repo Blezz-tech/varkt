@@ -3,7 +3,12 @@
 (перелёт Земля -> Юпитер в Солнечной системе и проверка формул на справочных
 данных реального пролёта «Вояджера-2» у Юпитера, NASA, 9 июля 1979 г.).
 
-Модель: плоская (2D), метод точечных сфер действия (patched conics).
+Модель: плоская (2D) — нулевое приближение; некомпланарность орбит Земли и
+Юпитера (i = 1.303° к эклиптике, NASA) учтена аналитическими поправками
+(функция coplanarity): векторный расчёт в худшем случае (встреча в узле),
+наклонение выходящей асимптоты, азимутальный угол beta, отклонение положения
+Юпитера от эклиптики против размера СОИ. Метод точечных сфер действия
+(patched conics).
 Участки:
   1) гомановский перелёт Земля -> Юпитер в поле Солнца;
   2) гиперболический пролёт в сфере действия Юпитера (аналитика + цикл RK4);
@@ -44,6 +49,9 @@ MU_EARTH, R_EARTH, A_EARTH = 3.986004418e14, 6_371_000.0, 149_597_870_700.0
 MU_JUPITER, R_JUPITER, A_JUPITER = 1.26686534e17, 71_492_000.0, 778_479_000_000.0
 SOI_JUPITER, ATM_JUPITER = 48_214_000_000.0, 200_000.0
 A_SATURN, E_SATURN = 1_433_530_000_000.0, 0.0565
+# Наклонение орбиты Юпитера к плоскости эклиптики (орбита Земли), рад
+# (NASA Planetary Fact Sheet: Inclination to Ecliptic = 1.303°)
+I_JUPITER_ECL = math.radians(1.303)
 DAY = 86_400.0
 
 # Табличные данные NASA по пролёту «Вояджера-2» у Юпитера (9 июля 1979 г.)
@@ -263,6 +271,78 @@ def oberth_dv(rp: float, vinf: float, v_j: float,
     vinf2 = 0.5 * (lo + hi_b)
     dv = math.sqrt(vinf2 ** 2 + 2.0 * mu / rp) - math.sqrt(vinf ** 2 + 2.0 * mu / rp)
     return vinf2, dv
+
+
+def coplanarity(rp: float, vinf: float, v_j: float, v_arr: float,
+                mu: float = MU_JUPITER) -> dict:
+    """Поправки за некомпланарность орбит Земли и Юпитера (i = 1.303°).
+
+    Плоскость перелёта = эклиптика (орбита Земли, i = 0). Орбита Юпитера
+    наклонена к эклиптике на i_J = 1.303° (NASA). Разбираются два граничных
+    случая, покрывающие любую фазу встречи:
+
+    1) Встреча в узле: положение Юпитера на эклиптике, но вектор его скорости
+       наклонён к плоскости перелёта на epsilon = i_J. Тогда:
+       - |v∞| в системе Юпитера растёт (векторная разность v_прил - v_J3);
+       - плоскость пролёта (содержит v∞ и радиус перицентра, лежащий
+         в эклиптике — прицеливание сохраняется в проекции на эклиптику)
+         наклонена к орбитальной плоскости Юпитера на азимутальный угол beta;
+       - гелиоцентрическая скорость после пролёта и наклонение выходящей
+         асимптоты считаются векторно (поворот Родригеса в плоскости пролёта).
+    2) Встреча в максимальной широте: Юпитер отклонён от эклиптики не более
+       чем на a_J * sin(i_J) — это отклонение целиком поглощается сферой
+       действия (r_SOI); при этом v_J лежит в эклиптике и поправок к |v∞|,
+       e, delta нет вовсе.
+
+    Поправки малы (сотые-десятые процентов), но допущение компланарности
+    снято: его влияние ограничено и вычислено. Импульс Оберта зависит только
+    от |v∞| и r_p в системе планеты, поэтому меняется лишь на величину
+    поправки к |v∞|.
+    """
+    eps = I_JUPITER_ECL
+    # --- Случай 1: встреча в узле, v_J наклонена на epsilon -----------------
+    v_j3 = np.array([0.0, v_j * math.cos(eps), v_j * math.sin(eps)])
+    v_in3 = np.array([0.0, v_arr, 0.0]) - v_j3           # v∞, система Юпитера
+    vinf3 = float(np.linalg.norm(v_in3))
+    d3 = delta_hyp(rp, vinf3, mu)  # уже в радианах
+    # Направление радиуса перицентра — в эклиптике, перпендикулярно проекции v∞.
+    r_hat = np.cross(np.array([0.0, 0.0, 1.0]), v_in3)
+    r_hat /= np.linalg.norm(r_hat)
+    # Нормаль плоскости пролёта: m = v∞ × r_p (в плоском пределе — +z).
+    m = np.cross(v_in3, r_hat)
+    m /= np.linalg.norm(m)
+    # Поворот v∞ на delta3 вокруг m (формула Родригеса).
+    c, s = math.cos(d3), math.sin(d3)
+    v_out3 = (v_in3 * c + np.cross(m, v_in3) * s
+              + m * float(np.dot(m, v_in3)) * (1.0 - c))
+    v_helio3 = v_j3 + v_out3
+    # Плоский эталон (та же геометрия при epsilon = 0).
+    _, v_helio2 = post_flyby(rp, vinf, +1, v_j)
+    v2 = float(np.linalg.norm(v_helio2))
+    v3 = float(np.linalg.norm(v_helio3))
+    # Азимутальный угол beta: между v∞ и орбитальной плоскостью Юпитера.
+    # В узле радиус-вектор Юпитера лежит в эклиптике (в кадре post_flyby — вдоль +x).
+    n_j = np.cross(np.array([1.0, 0.0, 0.0]), v_j3 / v_j)
+    beta = math.degrees(math.asin(abs(float(np.dot(v_in3, n_j))) / vinf3))
+    # Наклонение выходящей асимптоты к эклиптике.
+    gamma = math.degrees(math.asin(abs(float(v_helio3[2])) / v3))
+    # Импульс Оберта с поправленным |v∞| (величина в системе планеты).
+    _, dv_ob3 = oberth_dv(rp, vinf3, v_j, mu)
+    _, dv_ob2 = oberth_dv(rp, vinf, v_j, mu)
+    # Граничный случай 2: отклонение положения Юпитера от эклиптики в узле-вне.
+    miss_max = A_JUPITER * math.sin(eps)
+    return dict(
+        incl_ecl_deg=math.degrees(eps),
+        v_inf_planar_m_s=vinf, v_inf_3d_m_s=vinf3, d_v_inf_m_s=vinf3 - vinf,
+        delta_planar_deg=math.degrees(delta_hyp(rp, vinf, mu)),
+        delta_3d_deg=math.degrees(d3),
+        v_out_planar_m_s=v2, v_out_3d_m_s=v3, d_v_out_m_s=v3 - v2,
+        outplane_v_out_m_s=float(abs(v_helio3[2])),
+        gamma_out_deg=gamma, beta_max_deg=beta,
+        oberth_dv_planar_m_s=dv_ob2, oberth_dv_3d_m_s=dv_ob3,
+        node_miss_max_m=miss_max, soi_m=SOI_JUPITER,
+        soi_covers_miss=bool(miss_max < SOI_JUPITER),
+    )
 
 
 # --- 5. Проверка формул по справочным параметрам «Вояджера-2» ------------------------
@@ -566,6 +646,18 @@ def main():
     print(f"    нужен поворот δ ≥ {need_delta:.2f}°, максимум у границы атмосферы δ_max = {d_max:.2f}°")
     print(f"    эффект Оберта при h_p = 200 км: импульс Δv = {dv_ob:.1f} м/с (v∞: {tr.v_inf_j:.0f} → {vinf2:.0f} м/с)")
 
+    cop = coplanarity(R_JUPITER + ATM_JUPITER, tr.v_inf_j, tr.v_jup, tr.v_arr)
+    print(f"\n  Некомпланарность орбит (i Юпитера = {cop['incl_ecl_deg']:.3f}° к эклиптике):")
+    print(f"    встреча в узле:  v∞ {cop['v_inf_planar_m_s']:.1f} → {cop['v_inf_3d_m_s']:.1f} м/с "
+          f"(Δ = {cop['d_v_inf_m_s']:+.1f}),  δ_max {cop['delta_planar_deg']:.2f} → {cop['delta_3d_deg']:.2f}°")
+    print(f"    v_вых {cop['v_out_planar_m_s']:.1f} → {cop['v_out_3d_m_s']:.1f} м/с "
+          f"(Δ = {cop['d_v_out_m_s']:+.1f}),  наклонение выходящей асимптоты {cop['gamma_out_deg']:.2f}°")
+    print(f"    азимутальный угол β ≤ {cop['beta_max_deg']:.2f}°,  Δv Оберта "
+          f"{cop['oberth_dv_planar_m_s']:.2f} → {cop['oberth_dv_3d_m_s']:.2f} м/с")
+    print(f"    отклонение Юпитера от эклиптики ≤ {cop['node_miss_max_m'] / 1e9:.1f} млн км "
+          f"при r_SOI = {SOI_JUPITER / 1e9:.1f} млн км: "
+          f"{'поглощается СОИ' if cop['soi_covers_miss'] else 'ВНЕ СОИ!'}")
+
     _, d_num_soi = propagate_rk4_from_pericenter(R_JUPITER + 20_000e3, tr.v_inf_j, dt=20.0, r_limit=0.95 * SOI_JUPITER)
     d_asym = math.degrees(delta_hyp(R_JUPITER + 20_000e3, tr.v_inf_j))
     voy = check_voyager2()
@@ -612,6 +704,7 @@ def main():
         ),
         rk4_check=dict(delta_rk4_soi_deg=d_num_soi, delta_formula_deg=d_asym),
         voyager2_check=voy,
+        coplanarity=cop,
     )
     with open(os.path.join(OUT, "summary.json"), "w", encoding="utf-8") as f:
         json.dump(summary, f, ensure_ascii=False, indent=2)

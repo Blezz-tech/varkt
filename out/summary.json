@@ -48,5 +48,24 @@
     "v_out_nasa_km_s": 20.03,
     "dv_nasa_km_s": 10.170000000000002,
     "rel_err_percent": 0.9771924410644293
+  },
+  "coplanarity": {
+    "incl_ecl_deg": 1.303,
+    "v_inf_planar_m_s": 5643.256856782259,
+    "v_inf_3d_m_s": 5647.690338626334,
+    "d_v_inf_m_s": 4.433481844074777,
+    "delta_planar_deg": 158.40606514294433,
+    "delta_3d_deg": 158.38935154038856,
+    "v_out_planar_m_s": 18421.305616214722,
+    "v_out_3d_m_s": 18423.497824156977,
+    "d_v_out_m_s": 2.192207942254754,
+    "outplane_v_out_m_s": 572.9389177166511,
+    "gamma_out_deg": 1.7820869683368237,
+    "beta_max_deg": 1.7104827971698637,
+    "oberth_dv_planar_m_s": 4.771197634123382,
+    "oberth_dv_3d_m_s": 4.352065482060425,
+    "node_miss_max_m": 17702363301.78122,
+    "soi_m": 48214000000.0,
+    "soi_covers_miss": true
   }
 }
