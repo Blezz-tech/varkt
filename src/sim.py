@@ -112,7 +112,12 @@ def delta_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
 
 
 def b_hyp(rp: float, vinf: float, mu: float = MU_JOOL) -> float:
-    """Прицельный параметр: b = r_p * sqrt((e + 1) / (e - 1))."""
+    """Прицельный параметр: b = r_p * sqrt((e + 1) / (e - 1)).
+
+    При vinf -> 0 гипербола вырождается в параболу (e -> 1) и b -> inf.
+    """
+    if vinf <= 0.0:
+        return math.inf
     e = e_hyp(rp, vinf, mu)
     return rp * math.sqrt((e + 1.0) / (e - 1.0))
 
@@ -205,13 +210,54 @@ def rp_for_apo(apo_target: float, vinf: float, side: int, v_j: float,
     return 0.5 * (lo + hi)
 
 
-def oberth_dv(rp: float, vinf: float, delta: float, v_j: float,
+def oberth_dv(rp: float, vinf: float, v_j: float,
               mu: float = MU_JOOL) -> tuple[float, float]:
-    """Импульс Delta_v в перицентре гиперболы для достижения второй космической скорости."""
+    """Импульс Delta_v в перицентре гиперболы для достижения второй космической скорости.
+
+    Самосогласованный расчёт: импульс увеличивает v_inf до v_inf', что меняет
+    эксцентриситет e' = 1 + r_p * v_inf'^2 / mu и угол поворота
+    delta' = 2 * arcsin(1 / e'). Требуемая v_inf' — наименьший корень уравнения
+    |v_вых(v_inf', delta')| = v_esc (треугольник скоростей с обновлённым delta').
+    Фиксирование delta на доимпульсном значении (квадратичная формула) занижает
+    Delta_v: при h_p = 200 км даёт 58.9 м/с вместо самосогласованных ~128 м/с.
+    Корень ищется сканированием (первое пересечение) + делением отрезка пополам,
+    т.к. |v_вых(v_inf')| немонотонен.
+    """
     v_esc_helio = v_esc(A_JOOL, MU_SUN)
-    bb = -2.0 * v_j * math.cos(delta)
-    cc = v_j ** 2 - v_esc_helio ** 2
-    vinf2 = (-bb + math.sqrt(bb * bb - 4.0 * cc)) / 2.0
+
+    def v_out_of(vinf2: float) -> float:
+        d = delta_hyp(rp, vinf2, mu)
+        return math.sqrt(v_j ** 2 + vinf2 ** 2 - 2.0 * v_j * vinf2 * math.cos(d))
+
+    def gap(vinf2: float) -> float:
+        return v_out_of(vinf2) - v_esc_helio
+
+    if gap(vinf) >= 0.0:
+        return vinf, 0.0
+    # Верхняя граница с gap > 0 (при v_inf' -> inf выходная скорость -> inf).
+    hi = max(2.0 * vinf, vinf + 1000.0)
+    while gap(hi) <= 0.0 and hi < 1e7:
+        hi = vinf + 2.0 * (hi - vinf)
+    # Первое пересечение нуля (минимальный v_inf' => минимальный Delta_v).
+    n_scan = 500
+    prev = vinf
+    bracket = None
+    for i in range(1, n_scan + 1):
+        cur = vinf + (hi - vinf) * i / n_scan
+        if gap(cur) >= 0.0:
+            bracket = (prev, cur)
+            break
+        prev = cur
+    if bracket is None:  # pragma: no cover — недостижимо при hi с gap > 0
+        bracket = (vinf, hi)
+    lo, hi_b = bracket
+    for _ in range(80):
+        mid = 0.5 * (lo + hi_b)
+        if gap(mid) >= 0.0:
+            hi_b = mid
+        else:
+            lo = mid
+    vinf2 = 0.5 * (lo + hi_b)
     dv = math.sqrt(vinf2 ** 2 + 2.0 * mu / rp) - math.sqrt(vinf ** 2 + 2.0 * mu / rp)
     return vinf2, dv
 
@@ -334,7 +380,7 @@ def fig_design_map(tr: Transfer, hs=np.linspace(200, 3e5, 900)):
 
     ax = axes[1]
     need_esc = np.array([
-        oberth_dv(R_JOOL + h * 1000, tr.v_inf_j, delta_hyp(R_JOOL + h * 1000, tr.v_inf_j), tr.v_jool)[1]
+        oberth_dv(R_JOOL + h * 1000, tr.v_inf_j, tr.v_jool)[1]
         for h in hs
     ])
     ax.plot(hs, need_esc, color="#e37400", lw=2)
@@ -419,15 +465,16 @@ def fig_oberth(tr: Transfer):
 
     ax = axes[1]
     hs2 = np.linspace(200, 40_000, 300)
-    dvs = [oberth_dv(R_JOOL + h * 1e3, tr.v_inf_j, delta_hyp(R_JOOL + h * 1e3, tr.v_inf_j), tr.v_jool)[1]
+    dvs = [oberth_dv(R_JOOL + h * 1e3, tr.v_inf_j, tr.v_jool)[1]
            for h in hs2]
     ax.plot(hs2, dvs, color="#1a73e8", lw=2)
     ax.fill_between(hs2, dvs, color="#1a73e8", alpha=0.12)
     ax.axvline(ATM_JOOL / 1000, color="#fbbc04", lw=4, alpha=0.5)
-    ax.text(ATM_JOOL / 1000 * 1.3, 900, "граница атмосферы\n(200 км)", fontsize=8, color="#b06000")
+    ax.text(ATM_JOOL / 1000 * 1.3, float(np.max(dvs)) * 0.55, "граница атмосферы\n(200 км)",
+            fontsize=8, color="#b06000")
     ax.set_xlabel("высота перицентра h_p, км")
     ax.set_ylabel("импульс Δv для ухода из системы, м/с")
-    ax.set_title("Эффект Оберта: импульс в низком перицентре\n(58.9 м/с при h_p = 200 км) закрывает недостаток поворота")
+    ax.set_title(f"Эффект Оберта: импульс в низком перицентре\n({dvs[0]:.1f} м/с при h_p = 200 км) закрывает недостаток поворота")
     fig.tight_layout()
     fig.savefig(os.path.join(OUT, "fig4_oberth.png"))
     plt.close(fig)
@@ -500,7 +547,7 @@ def main():
     need_delta = math.degrees(math.acos((tr.v_jool ** 2 + tr.v_inf_j ** 2 - v_esc_helio ** 2)
                                         / (2.0 * tr.v_jool * tr.v_inf_j)))
     d_max = math.degrees(delta_hyp(R_JOOL + ATM_JOOL, tr.v_inf_j))
-    vinf2, dv_ob = oberth_dv(R_JOOL + ATM_JOOL, tr.v_inf_j, math.radians(d_max), tr.v_jool)
+    vinf2, dv_ob = oberth_dv(R_JOOL + ATM_JOOL, tr.v_inf_j, tr.v_jool)
     print(f"\n  Условие ухода из системы Кербола (v_esc = {v_esc_helio:.1f} м/с):")
     print(f"    нужен поворот δ ≥ {need_delta:.2f}°, максимум у границы атмосферы δ_max = {d_max:.2f}°")
     print(f"    эффект Оберта при h_p = 200 км: импульс Δv = {dv_ob:.1f} м/с (v∞: {tr.v_inf_j:.0f} → {vinf2:.0f} м/с)")
