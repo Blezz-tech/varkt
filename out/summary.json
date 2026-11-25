@@ -1,26 +1,41 @@
 {
   "transfer": {
-    "r1": 700000.0,
-    "a_t": 41186700288.0,
-    "tof": 24252689.90040504,
-    "dv_tmi": 1931.258961071645,
-    "v_inf_k": 2713.0006574067593,
-    "v_arr": 2372.4829934564686,
-    "v_jool": 4128.713089188005,
-    "v_inf_j": 1756.2300957315365,
-    "phase_deg": 96.57893258731787
+    "r1": 6471000.0,
+    "a_t": 464038435350.0,
+    "tof": 86203517.28226696,
+    "dv_tmi": 6312.000934218338,
+    "v_inf_k": 8793.297172698065,
+    "v_arr": 7413.411294261613,
+    "v_jup": 13056.668151043872,
+    "v_inf_j": 5643.256856782259,
+    "phase_deg": 97.1613365440468
   },
   "flyby": {
-    "h_p_eeloo_km": 35095.52777715582,
-    "delta_eeloo_deg": 87.30830193540932,
-    "delta_max_deg": 138.9782669508796,
-    "need_delta_escape_deg": 164.31503568061342,
-    "v_escape_m_s": 5838.882045876995,
-    "oberth_dv_m_s": 128.2118103297671
+    "h_p_saturn_km": 1368644.5299092364,
+    "delta_saturn_deg": 94.47990827697144,
+    "delta_max_deg": 158.40606514294433,
+    "need_delta_escape_deg": 160.17480175135657,
+    "v_escape_m_s": 18464.91717861109,
+    "oberth_dv_m_s": 4.771197634123382
+  },
+  "comparison": {
+    "fact_launch": "1977-08-20",
+    "fact_jupiter": "1979-07-09",
+    "fact_tof_days": 689,
+    "model_tof_days": 997.7258944706824,
+    "fact_v_inf_km_s": 7.6,
+    "model_v_inf_km_s": 5.643256856782259,
+    "fact_v_in_helio_km_s": 9.86,
+    "model_v_in_helio_km_s": 7.413411294261613,
+    "fact_v_out_km_s": 20.03,
+    "model_v_out_passive_km_s": 18.421305616214724,
+    "fact_delta_deg": 97.59225523820841,
+    "model_delta_max_deg": 158.40606514294433,
+    "model_oberth_dv_m_s": 4.771197634123382
   },
   "rk4_check": {
-    "delta_rk4_soi_deg": 102.25636745289232,
-    "delta_formula_deg": 102.32228527244355
+    "delta_rk4_soi_deg": 155.57606558899306,
+    "delta_formula_deg": 155.65537079318347
   },
   "voyager2_check": {
     "r_p_km": 721895.0,
