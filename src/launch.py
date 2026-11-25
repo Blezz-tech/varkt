@@ -30,29 +30,13 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-from sim import OUT, ATM_JUPITER, DAY, R_JUPITER, launch_window, oberth_dv
-
-# --- Константы Земли и атмосферы -------------------------------------------------------
-G0 = 9.80665                 # нормальное ускорение свободного падения, м/с²
-R_EARTH = 6_371_000.0        # радиус Земли, м
-MU_EARTH = 3.986004418e14    # гравитационный параметр Земли, м³/с²
-RHO0, H_SCALE = 1.225, 8_500.0   # плотность на уровне моря и масштаб высоты, кг/м³
-CDA = 0.8                    # эквивалентная площадка сопротивления Cd·A, м²
-
-# --- Параметры ракеты-носителя (модельные, класса средней тяжести) ----------------------
-STAGE1 = dict(name="Ступень 1", T=4.0e6, isp=295.0, m_prop=230_000.0, m_struct=16_000.0)
-STAGE2 = dict(name="Ступень 2", T=9.0e5, isp=345.0, m_prop=44_350.0, m_struct=4_500.0)
-H_TIP, H_PITCH = 1_500.0, 24_000.0   # высота конца вертикального участка и масштаб крена, м
-DT = 0.02                    # шаг интегрирования, с
-V_ORBIT_TARGET = 100_000.0   # целевая круговая орбита, м (высота)
-
-# --- Аппарат: сухая масса и двигатели ---------------------------------------------------
-M_DRY = 1_000.0              # сухая масса аппарата, кг
-ISP_MAN = 320.0              # удельный импульс манёврового двигателя аппарата, с
-DV_RESERVE = 25.0            # резерв Δv на попутные коррекции, м/с
-ISP_KICK = 320.0             # удельный импульс блока выведения (БУП), с
-MS_KICK = 180.0              # сухая масса БУП, кг
-T_KICK, T_PROBE = 2.0e5, 500.0   # тяга БУП и манёврового двигателя аппарата, Н
+from constants import (
+    OUT, DAY, G0, R_EARTH, MU_EARTH, RHO0, H_SCALE, CDA,
+    STAGE1, STAGE2, H_TIP, H_PITCH, ASC_DT as DT, V_ORBIT_TARGET,
+    M_DRY, ISP_MAN, DV_RESERVE, ISP_KICK, MS_KICK, T_KICK, T_PROBE,
+    ATM_JUPITER, R_JUPITER,
+)
+from sim import launch_window, oberth_dv
 
 
 def rho(h: float) -> float:

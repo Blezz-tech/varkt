@@ -10,7 +10,7 @@
 Юпитера от эклиптики против размера СОИ. Метод точечных сфер действия
 (patched conics).
 Участки:
-  1) гомановский перелёт Земля -> Юпитер в поле Солнца;
+  1) межпланетный перелёт Земля -> Юпитер в поле Солнца;
   2) гиперболический пролёт в сфере действия Юпитера (аналитика + цикл RK4);
   3) послепролётная гелиоцентрическая орбита («треугольник скоростей»);
   4) условие ухода из системы и импульс в перицентре (эффект Оберта);
@@ -39,30 +39,10 @@ plt.rcParams.update({
     "axes.axisbelow": True, "savefig.bbox": "tight",
 })
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "out")
-os.makedirs(OUT, exist_ok=True)
-
-# --- 1. Физические константы Солнечной системы (СИ, JPL/NASA) ------------------------
-MU_SUN = 1.32712440018e20
-MU_EARTH, R_EARTH, A_EARTH = 3.986004418e14, 6_371_000.0, 149_597_870_700.0
-MU_JUPITER, R_JUPITER, A_JUPITER = 1.26686534e17, 71_492_000.0, 778_479_000_000.0
-SOI_JUPITER, ATM_JUPITER = 48_214_000_000.0, 200_000.0
-A_SATURN, E_SATURN = 1_433_530_000_000.0, 0.0565
-# Наклонение орбиты Юпитера к плоскости эклиптики (орбита Земли), рад
-# (NASA Planetary Fact Sheet: Inclination to Ecliptic = 1.303°)
-I_JUPITER_ECL = math.radians(1.303)
-DAY = 86_400.0
-
-# Табличные данные NASA по пролёту «Вояджера-2» у Юпитера (9 июля 1979 г.)
-VOYAGER2 = dict(
-    mu_jup=1.266865e8,   # гравитационный параметр Юпитера, км³/с²
-    R_jup=71_492.0,      # экваториальный радиус Юпитера, км
-    r_p=721_895.0,       # радиус перицентра пролёта (10.10 R_Ю), км
-    v_inf=7.60,          # гиперболическая избыточная скорость, км/с
-    v_jup=13.06,         # орбитальная скорость Юпитера, км/с
-    v_in_helio=9.86,     # гелиоцентрическая скорость до пролёта, км/с
-    v_out_nasa=20.03,    # фактическая гелиоцентрическая скорость после пролёта, км/с
+# --- 1. Общие константы (единый источник: src/constants.py) --------------------------
+from constants import (  # noqa: E402
+    ROOT, OUT, MU_SUN, MU_EARTH, R_EARTH, A_EARTH, MU_JUPITER, R_JUPITER, A_JUPITER,
+    SOI_JUPITER, ATM_JUPITER, A_SATURN, E_SATURN, I_JUPITER_ECL, DAY, VOYAGER2,
 )
 
 
@@ -78,7 +58,7 @@ def v_esc(r: float, mu: float) -> float:
     return math.sqrt(2.0 * mu / r)
 
 
-# --- 2. Гомановский перелёт Земля -> Юпитер ---------------------------------------------
+# --- 2. Межпланетный перелёт Земля -> Юпитер ---------------------------------------------
 
 @dataclass
 class Transfer:
@@ -94,7 +74,7 @@ class Transfer:
 
 
 def launch_window(r1: float = R_EARTH + 100_000.0) -> Transfer:
-    """Расчёт полуэллипса Гомана от орбиты Земли до орбиты Юпитера."""
+    """Расчёт трансферной орбиты (полуэллипса от орбиты Земли до орбиты Юпитера)."""
     a_t = 0.5 * (A_EARTH + A_JUPITER)
     tof = math.pi * math.sqrt(a_t ** 3 / MU_SUN)
     v_c1 = v_circ(A_EARTH, MU_SUN)
@@ -419,7 +399,7 @@ def fig_trajectory(tr: Transfer, rp_saturn: float, rp_low: float):
     e_tr = (A_JUPITER - A_EARTH) / (A_JUPITER + A_EARTH)
     r_tr = tr.a_t * (1.0 - e_tr ** 2) / (1.0 + e_tr * np.cos(th_tr))
     ax.plot(r_tr * np.cos(th_tr) / 1e9, r_tr * np.sin(th_tr) / 1e9,
-            color="#ea4335", lw=2.3, label="гомановский перелёт Земля → Юпитер")
+            color="#ea4335", lw=2.3, label="межпланетный перелёт Земля → Юпитер")
 
     r_meet = np.array([-A_JUPITER, 0.0])
     _, v_low = post_flyby(rp_low, tr.v_inf_j, +1, tr.v_jup)
@@ -577,7 +557,7 @@ def fig_scaling(tr: Transfer, voy: dict):
     rr = np.linspace(1.05, 12, 500)
     ax.plot(rr, [math.degrees(delta_hyp(r * R_JUPITER, tr.v_inf_j)) for r in rr],
             lw=2, color="#1a73e8",
-            label=f"модель Гомана: Юпитер, v∞ = {tr.v_inf_j:.0f} м/с")
+            label=f"межпланетный перелёт: Юпитер, v∞ = {tr.v_inf_j:.0f} м/с")
     ax.plot(rr, [math.degrees(delta_hyp(r * VOYAGER2["R_jup"], VOYAGER2["v_inf"], VOYAGER2["mu_jup"])) for r in rr],
             lw=2, color="#ea4335",
             label=f"пролёт «Вояджера-2»: Юпитер, v∞ = {VOYAGER2['v_inf']:.2f} км/с")
